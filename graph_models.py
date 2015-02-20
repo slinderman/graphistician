@@ -1,22 +1,13 @@
 """
 A few simple graph model classes that fall into the Aldous-Hoover framework.
-
-Scott Linderman
-11/7/2013
 """
 
 import numpy as np
-from scipy.special import betaln
-import matplotlib.pyplot as plt
-
-import string 
-import logging
+from scipy.special import betaln, erf
 import copy
 
 from hips.inference.discrete_sample import discrete_sample
 from hips.inference.log_sum_exp_sample import log_sum_exp_sample
-from hips.inference.elliptical_slice import elliptical_slice
-from hips.inference.hmc import hmc
 
 class AldousHooverNetwork:
     """
@@ -189,7 +180,8 @@ class ErdosRenyiNetwork(AldousHooverNetwork):
             a_post = self.a + beta * nnz_A
             b_post = self.b +  beta * (N**2 - nnz_A)
             return np.random.beta(a_post, b_post)
-            
+
+
 class StochasticBlockModel(AldousHooverNetwork):
     """
     Model an Erdos-Renyi random graph
@@ -377,7 +369,162 @@ class StochasticBlockModel(AldousHooverNetwork):
                     B[r1,r2] = np.random.beta(b1post, b0post)
         
         return (B,pi)
-                
+
+
+class EigenModel(AldousHooverNetwork):
+    """
+    Eigenmodel for random graphs, as defined in Hoff, 2008.
+
+    A_{i,j} = I[z_{i,j} >= 0]
+    z_{i,j} ~ N(mu_{0} + f_i^T \Lambda f_j, 1)
+    Lambda  = diag(lambda)
+    mu_{0}  ~ N(0, q)
+    f_{i}   ~ N(0, rI)
+    lambda  ~ N(0, sI)
+
+    lambda and f_{i} are vectors in R^D.
+
+    Probability of a connection i->j is proportional to the dot product
+    of the vectors f_i and f_j under the norm Lambda.  Hence we can think of
+    the f's as feature vectors, and the probability of connection as
+    proportional to feature similarity.
+    """
+    def __init__(self, D, q=1.0, r=1.0, s=1.0):
+        """ Constructor.
+        :param D     Dimensionality of the latent feature space.
+        :param q     Variance of the bias, mu_0
+        :param r     Variance of the feature vectors, u
+        :param s     Variance of the norm, Lambda
+        """
+        self.D = D
+        self.q = q
+        self.r = r
+        self.s = s
+
+    def pr_A_given_f(self,fi,fj, theta):
+        """
+        The probability of an edge is a function of their features:
+        p(A_{i,j}=1) = p(z_{i,j} | mu_0 + u_i^T Lambda -u_j, 1) > 0
+        """
+        assert fi.shape == (self.D,)
+        assert fj.shape == (self.D,)
+
+        mu_0, lmbda = theta
+
+        mu_ij = mu_0 + (fi * lmbda).dot(fj)
+        p_A = 0.5 * (1+erf(mu_ij / np.sqrt(2.0)))
+        return p_A
+
+    def logpr_f(self,f,theta):
+        """
+        The features of an eigenmodel are the feature vectors. They
+        have a spherical Gaussian prior:
+            f_i ~ N(0, rI)
+        """
+        N,D = f.shape
+        assert D == self.D
+
+        return -0.5 * (f * f / self.r).sum()
+
+    def logpr_theta(self, theta):
+        """
+        The globals are mu_0 and lmbda
+        """
+        mu_0, lmbda, Z = theta
+        assert np.isscalar(mu_0)
+        assert lmbda.shape == (self.D,)
+        lp = 0.0
+
+        # Add the prior for mu_0
+        lp += -0.5 * mu_0**2 / self.q
+
+        # Add prior on lmbda
+        lp += -0.5 * (lmbda * lmbda / self.s).sum()
+
+        return lp
+
+    def sample_f(self, theta, (n,A,f)=(None,None,None), beta=1.0):
+        """
+        Sample new block assignments given the parameters.
+
+        :param beta: The weight of the log likelihood
+        """
+        (B,pi) = theta
+        if None in (n,A,f):
+            # Sample a feature vector from the prior
+            fn = np.random.normal(0, self.r, size=(self.D))
+
+        else:
+            # Sample the conditional distribution on fn
+            fn = self._sample_f(theta, n, f, beta=beta)
+
+        return fn
+
+    def _sample_f(self, theta, n, f, beta=1.0):
+        """
+        Gibbs sample fn given f_{not n}, lmbda, mu, z
+        """
+
+        N,D = f.shape
+        assert D == self.D
+        (mu_0, lmbda, Z) = theta
+
+        # Compute sufficient statistics for fn
+        # First compute f * Lambda and z-mu0
+        fLambda = f * lmbda[:,None]
+        zcent   = Z - mu_0
+
+        # Compute the sufficient statistics for fn
+        # TODO: Use beta for AIS
+        post_prec = 1.0/self.r * np.eye(self.D)
+        post_mean_dot_prec = np.zeros(self.D)
+        for nn in xrange(N):
+            post_prec += 2 * np.outer(fLambda[n,:], fLambda[n,:])
+            post_mean_dot_prec += zcent[nn,n] * fLambda[n,:]
+            post_mean_dot_prec += zcent[n,nn] * fLambda[n,:]
+
+        # Compute the posterior mean and covariance
+        post_cov  = np.linalg.inv(post_prec)
+        post_mean = post_cov.dot(post_mean_dot_prec)
+
+        # Return a sample from the posterior
+        return np.random.multivariate_normal(post_mean, post_cov)
+
+    def sample_theta(self, (A,f)=(None,None), beta=1.0):
+        """
+        Sample the parameters of pr_A_given_f. For the Erdos-Renyi
+        graph model, the only parameter is rho.
+
+        :param beta: The weight of the log likelihood
+        """
+
+    def _sample_mu_0(self, f, Z, lmbda):
+        """
+        Sample mu_0 from its Gaussian posterior
+        """
+        N,D = f.shape
+        assert D == self.D
+        assert Z.shape == (N,N)
+
+        # Compute the residual of Z after subtracting feature values
+        Zcent = Z - (f * lmbda[None, :]).dot(f.T)
+
+        # Compute posterior precision and variance
+        post_prec = 1.0 / self.q
+        post_prec += N**2
+        post_var  = 1.0 / post_prec
+
+        # Compute the posterior mean (assuming prior mean is zero)
+        post_mean = post_var * (Zcent.sum() + 0)
+
+        return np.random.normal(post_mean, post_var)
+
+    def _sample_lmbda(self, f, mu_0, Z):
+        """
+        Sample lambda from its multivariate normal posterior
+        """
+
+
 # Define helper functions to sample a random graph
 def sample_network(model, N):
     """
