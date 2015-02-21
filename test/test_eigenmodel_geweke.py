@@ -19,10 +19,13 @@ def demo(seed=None):
     N = 5      # Number of nodes
     D = 2       # Dimensionality of the feature space
     p = 0.1    # Baseline average probability of connection
-    q = 1.0     # Variance of the baseline probability
-    r = 1.0     # Variance of the feature space
-    s = 1.0     # Variance of the feature space metric, Lambda
-    model = Eigenmodel(N=N, D=D, p=p, q=q, r=r, s=s)
+    sigma_mu0 = 1.0     # Variance of the baseline probability
+    sigma_F = 1.0     # Variance of the feature space
+    sigma_lmbda = 1.0     # Variance of the feature space metric, Lambda
+    model = Eigenmodel(N=N, D=D, p=p,
+                       sigma_mu0=sigma_mu0,
+                       sigma_F=sigma_F,
+                       sigma_lmbda=sigma_lmbda)
 
     # Sample a graph from the eigenmodel
     A = model.rvs()
@@ -50,10 +53,9 @@ def demo(seed=None):
 
 def check_F_samples(model, samples):
     mu = 0
-    sigma = model.r
+    sigma = model.sigma_F
 
     F_samples = np.array([s.F for s in samples])
-
     F_mean = F_samples.mean(0)
     F_std   = F_samples.std(0)
     print "Mean F: \n", F_mean, " +- ", F_std
@@ -75,10 +77,9 @@ def check_F_samples(model, samples):
 
 def check_mu0_samples(model, samples):
     mu = model.mu_mu_0
-    sigma = model.q
+    sigma = model.sigma_mu0
 
     mu0_samples = np.array([s.mu_0 for s in samples])
-
     mu0_mean = mu0_samples.mean(0)
     mu0_std  = mu0_samples.std(0)
     print "Mean mu0: \n", mu0_mean, " +- ", mu0_std
@@ -101,10 +102,9 @@ def check_mu0_samples(model, samples):
 
 def check_lmbda_samples(model, samples):
     mu = 0
-    sigma = model.s
+    sigma = model.sigma_lmbda
 
     lmbda_samples = np.array([s.lmbda for s in samples])
-
     lmbda_mean = lmbda_samples.mean(0)
     lmbda_std  = lmbda_samples.std(0)
     print "Mean lmbda: \n", lmbda_mean, " +- ", lmbda_std

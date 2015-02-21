@@ -5,6 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from models import Eigenmodel
+try:
+    from hips.plotting.colormaps import harvard_colors
+    color = harvard_colors()[0]
+except:
+    color = 'b'
+# color = 'b'
 
 def demo(seed=None):
     if seed is None:
@@ -17,11 +23,12 @@ def demo(seed=None):
     N = 10      # Number of nodes
     D = 2       # Dimensionality of the feature space
     p = 0.01    # Baseline average probability of connection
-    r = 3**2      # Scale of the feature space
-    true_model = Eigenmodel(N=N, D=D, p=p, r=r)
+    sigma_F = 3**2    # Scale of the feature space
 
-    # Override the latent feature metric
-    true_model.lmbda = np.ones((2,))
+    mu_lmbda    = 1.0     # Mean of the latent feature space metric
+    sigma_lmbda = 0.001   # Variance of the latent feature space metric
+    true_model = Eigenmodel(N=N, D=D, p=p, r=sigma_F,
+                            mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
     # Sample a graph from the eigenmodel
     A = true_model.rvs()
@@ -34,29 +41,28 @@ def demo(seed=None):
     true_model.plot(A, ax=ax_true)
 
     # Make another model to fit the data
-    test_model = Eigenmodel(N=N, D=D, p=p, r=r)
-    # Override the latent feature metric
-    # test_model.lmbda = 0.001 * np.ones((2,))
+    test_model = Eigenmodel(N=N, D=D, p=p, r=sigma_F,
+                            mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
     # Fit with Gibbs sampling
-    N_samples = 200
-    lls       = []
+    N_samples = 1000
+    lps       = []
     for smpl in xrange(N_samples):
         print "Iteration ", smpl
         test_model.resample(A)
-        lls.append(test_model.log_likelihood(A))
-        print "LL: ", lls[-1]
+        lps.append(test_model.log_probability(A))
+        print "LP: ", lps[-1]
         print ""
 
 
         # Update the test plot
         ax_test.cla()
-        test_model.plot(A, ax=ax_test, color='b', F_true=true_model.F, lmbda_true=true_model.lmbda)
+        test_model.plot(A, ax=ax_test, color=color, F_true=true_model.F, lmbda_true=true_model.lmbda)
         plt.pause(0.001)
 
     plt.ioff()
     plt.figure()
-    plt.plot(np.array(lls))
+    plt.plot(np.array(lps))
     plt.xlabel("Iteration")
     plt.ylabel("LL")
     plt.show()
