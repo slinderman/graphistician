@@ -153,7 +153,7 @@ class Eigenmodel(AldousHooverNetwork, GibbsSampling):
         self._resample_mu_0(Zs)
 
         # Sample the metric of the latent feature space
-        # self._resample_lmbda(Zs)
+        self._resample_lmbda(Zs)
 
     def _resample_Z(self, data=[]):
         """
@@ -217,10 +217,14 @@ class Eigenmodel(AldousHooverNetwork, GibbsSampling):
 
         # Add sufficient statistics from each Z
         for Z in Zs:
-            post_prec += self.N**2
+            post_prec += self.N**2 - self.N
 
             # Compute the residual of Z after subtracting feature values
             Zcent = Z - (self.F * self.lmbda[None, :]).dot(self.F.T)
+
+            # For self connections, we ignore feature values
+            np.fill_diagonal(Zcent, 0.0)
+
             post_mean_dot_prec += Zcent.sum()
 
         # Compute the posterior mean (assuming prior mean is zero)
@@ -228,7 +232,7 @@ class Eigenmodel(AldousHooverNetwork, GibbsSampling):
         post_mean = post_var * post_mean_dot_prec
 
         # Sample from the posterior
-        self.mu_0 =  np.random.normal(post_mean, post_var)
+        self.mu_0 =  np.random.normal(post_mean, np.sqrt(post_var))
 
     def _resample_lmbda(self, Zs):
         """
@@ -289,7 +293,8 @@ class Eigenmodel(AldousHooverNetwork, GibbsSampling):
         #     R[:,d] /= np.linalg.norm(R[:,d])
         #
         from scipy.linalg import orthogonal_procrustes
-        R = orthogonal_procrustes(self.F, F_true)[0]
+        R = orthogonal_procrustes(self.F / np.sqrt(abs(self.lmbda[None, :])),
+                                  F_true / np.sqrt(abs(lmbda_true[None,:])))[0]
         return R
 
     def plot(self, A, ax=None, color='k', F_true=None, lmbda_true=None):
@@ -306,11 +311,10 @@ class Eigenmodel(AldousHooverNetwork, GibbsSampling):
             ax  = fig.add_subplot(111, aspect="equal")
 
         # If F_true is given, rotate F to match F_true
+        F = self.F / np.sqrt(abs(self.lmbda[None, :]))
         if F_true is not None:
             R = self.compute_optimal_rotation(F_true, lmbda_true)
-            F = self.F.dot(R)
-        else:
-            F = self.F
+            F = F.dot(R)
 
         # Scatter plot the node embeddings
         ax.plot(F[:,0], F[:,1], 's', color=color, markerfacecolor=color)
@@ -319,8 +323,8 @@ class Eigenmodel(AldousHooverNetwork, GibbsSampling):
             for n2 in xrange(self.N):
                 if A[n1,n2]:
                     ax.plot([F[n1,0], F[n2,0]],
-                             [F[n1,1], F[n2,1]],
-                             '-', color=color, lw=1.0)
+                            [F[n1,1], F[n2,1]],
+                            '-', color=color, lw=1.0)
 
         # Get extreme feature values
         b = np.amax(abs(F)) + F[:].std() / 2.0
