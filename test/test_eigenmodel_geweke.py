@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 from scipy.stats import norm, probplot
 
-from models import Eigenmodel
+from eigenmodel import Eigenmodel
 
 def demo(seed=None):
     if seed is None:

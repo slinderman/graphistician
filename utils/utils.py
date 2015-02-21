@@ -56,33 +56,5 @@ def expected_truncnorm(mu=0, sigma=1.0, lb=-np.Inf, ub=np.Inf):
     beta  = (ub-mu) / sigma
 
     E = mu + (normal_pdf(alpha) - normal_pdf(beta)) / Z * sigma
-
-    # # Initialize output
-    # E = np.zeros_like(mu)
-    #
-    # # Break down into three cases
-    # lower_bounded  = np.isfinite(lb) & np.isposinf(ub)
-    # upper_bounded  = np.isfinite(ub) & np.isneginf(lb)
-    # double_bounded = np.isfinite(lb) & np.isfinite(ub)
-    # not_bounded    = np.isneginf(lb) & np.isposinf(ub)
-    #
-    # # Without bounds it reduces to standard normal
-    # E[not_bounded] = mu[not_bounded]
-    #
-    # # TODO: Implement expectations when there is both an upper and lower bound
-    # if np.any(double_bounded):
-    #     raise NotImplementedError()
-    #
-    # # Compute lower bounded expectations
-    # import pdb; pdb.set_trace()
-    # alpha = (lb - mu)/sigma
-    # lmbda = normal_pdf(alpha) / (1.0 - normal_cdf(alpha))
-    # E[lower_bounded] = (mu + sigma * lmbda)[lower_bounded]
-    #
-    # # Compute upper bounded expectations
-    # beta = (ub - mu)/sigma
-    # lmbda = normal_pdf(beta) / normal_cdf(beta)
-    # E[upper_bounded] = (mu - sigma * lmbda)[upper_bounded]
-
     return E
 
