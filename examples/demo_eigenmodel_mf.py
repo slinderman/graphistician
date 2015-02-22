@@ -43,7 +43,7 @@ def demo(seed=None):
                             # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
     # Initialize with the true model settings
-    # test_model.init_with_gibbs(true_model)
+    test_model.init_with_gibbs(true_model)
     test_model.resample_from_mf()
 
     # Make a figure to plot the true and inferred network
@@ -56,16 +56,20 @@ def demo(seed=None):
 
     # Fit with mean field variational inference
     N_iters = 1000
-    lps       = []
+    lps     = []
+    vlbs    = []
     for itr in xrange(N_iters):
         # raw_input("Press enter to continue\n")
         print "Iteration ", itr
         test_model.meanfieldupdate(A)
+        vlbs.append(test_model.get_vlb())
+        # vlbs.append(test_model.get_vlb() )
 
         # Resample from the variational posterior
         test_model.resample_from_mf()
         lps.append(test_model.log_probability(A))
-        print "LP: ", lps[-1]
+        print "VLB: ", vlbs[-1]
+        # print "LP:  ", lps[-1]
         print ""
 
         # Update the test plot
@@ -76,10 +80,15 @@ def demo(seed=None):
 
     plt.ioff()
     plt.figure()
+    plt.plot(np.array(vlbs))
+    plt.xlabel("Iteration")
+    plt.ylabel("VLB")
+
+    plt.figure()
     plt.plot(np.array(lps))
     plt.xlabel("Iteration")
     plt.ylabel("LL")
     plt.show()
 
 # demo(2244520065)
-demo()
+demo(1234)

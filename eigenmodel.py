@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from graphistician.abstractions import AldousHooverNetwork
 from graphistician.deps.pybasicbayes.abstractions import GibbsSampling, MeanField
-from graphistician.utils.utils import sample_truncnorm, expected_truncnorm
+from graphistician.utils.utils import sample_truncnorm, expected_truncnorm, normal_cdf
 from graphistician.utils.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian
 
 class _EigenmodelBase(AldousHooverNetwork):
@@ -418,12 +418,65 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
         if not self.lmbda_given:
             self._meanfieldupdate_lmbda()
 
-    def mf_expected_logp(self):
+    def mf_expected_log_p(self, mu=None):
         """
         Compute the expected log probability of a connection under Z
         :return:
         """
+        if mu is None:
+            mu = self.mf_mu_Z
+        return np.nan_to_num(np.log(1.0 - normal_cdf(0, mu=mu, sigma=1.0)))
 
+    def mf_expected_log_notp(self, mu=None):
+        """
+        Compute the expected log probability of no connection under Z
+        :return:
+        """
+        if mu is None:
+            mu = self.mf_mu_Z
+        return np.nan_to_num(np.log(normal_cdf(0, mu=mu, sigma=1.0)))
+
+    def mf_expected_mu(self):
+        """
+        E[mu] = E[mu0 + f^T \Lambda f]
+              = E[mu0] + E[f]^T E[\Lambda] E[f]
+        :return:
+        """
+        E_mu = self.mf_mu_mu0 + (self.mf_mu_F * self.mf_mu_lmbda[None,:]).dot(self.mf_mu_F.T)
+
+        # Override the diagonal
+        np.fill_diagonal(E_mu, self.mf_mu_mu0)
+        return E_mu
+
+    def mf_expected_musq(self):
+        """
+        E[mu_{n1n2}^2] = E[(mu0 + f_{n1}^T \Lambda f_{n2})^2]
+                       = E[mu0^2] + 2E[mu0] E[f_{n1}]^T E[\Lambda] E[f_{n2}]
+                         + E[(f_{n1}^T \Lambda f_{n2})^2]
+
+                       = E[mu0^2] + 2E[mu0] E[f_{n1}]^T E[\Lambda] E[f_{n2}]
+                         + E[(\sum_{k} lmbda_k f_{n1, k} f_{n2, k})^2]
+
+                       = E[mu0^2] + 2E[mu0] E[f_{n1}]^T E[\Lambda] E[f_{n2}]
+                         + E[\sum_{k1} \sum_{k2} f_{n1, k1} \lmbda_{k1} f_{n2,k1}
+                                            x    f_{n1, k2} \lmbda_{k2} f_{n2, k2}]
+
+                       = E[mu0^2] + 2E[mu0] E[f_{n1}]^T E[\Lambda] E[f_{n2}]
+                         + sum(E[f_{n1} f_{n1}^T]  E[\lmbda \lmbda^T] E[f_{n2} f_{n2}^T])
+
+            for n1 \neq n2
+        :return:
+        """
+        E_musq = np.zeros((self.N, self.N))
+        E_musq += self.mf_expected_mu0sq()
+        E_musq += 2*self.mf_mu_mu0 * (self.mf_mu_F * self.mf_mu_lmbda[None, :]).dot(self.mf_mu_F.T)
+        llT = self.mf_expected_llT()
+        for n1 in xrange(self.N):
+            for n2 in xrange(self.N):
+                E_musq[n1,n2] += np.sum(self.mf_expected_ffT(n1)
+                                        * llT
+                                        * self.mf_expected_ffT(n2))
+        return E_musq
 
     def mf_expected_Z(self):
         """
@@ -442,7 +495,20 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
         return E_Z
 
     def mf_expected_Zsq(self):
-        return 1 + self.mf_expected_Z()**2
+        # import pdb; pdb.set_trace()
+        if self.mf_A.dtype == np.bool:
+            E_Zsq  = np.zeros((self.N, self.N))
+            E_Zsq[self.mf_A]  = TruncatedScalarGaussian(mu=self.mf_mu_Z, lb=0).expected_xsq()[self.mf_A]
+            E_Zsq[~self.mf_A] = TruncatedScalarGaussian(mu=self.mf_mu_Z, ub=0).expected_xsq()[~self.mf_A]
+        else:
+            E_Zsq  = self.mf_A * TruncatedScalarGaussian(mu=self.mf_mu_Z, lb=0).expected_xsq()
+            E_Zsq += (1-self.mf_A) * TruncatedScalarGaussian(mu=self.mf_mu_Z, ub=0).expected_xsq()
+
+        assert np.all(np.isfinite(E_Zsq))
+        return E_Zsq
+
+    def mf_expected_mu0sq(self):
+        return self.mf_sigma_mu0 + self.mf_mu_mu0**2
 
     def mf_expected_ffT(self, n):
         """
@@ -572,30 +638,79 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
         :param x:
         :return:
         """
+        # import pdb; pdb.set_trace()
+        A = x
+        assert A.shape == (self.N, self.N) and np.all(np.bitwise_or(A==0, A==1))
+        log_p    = self.mf_expected_log_p()
+        log_notp = self.mf_expected_log_notp()
+        return (A * log_p + (1-A) * log_notp).sum()
 
     def get_vlb(self):
         """
         Compute the variational lower bound.
         :return:
         """
+        # import pdb; pdb.set_trace()
         vlb = 0
 
-        # E[ln p(z | A mu0, F, lmbda)]
-        vlb += self.mf_A * TruncatedScalarGaussian(lb=0).negentropy()
+        # # E[ln p(z | A, mu0, F, lmbda)]
+        E_ln_Z = self.mf_expected_log_p(mu=self.mf_expected_mu())
+        vlb += (self.mf_A * TruncatedScalarGaussian(lb=0,
+                                                    mu=self.mf_expected_mu(),
+                                                    sigmasq=1.0)
+                .negentropy(E_x=self.mf_expected_Z(),
+                            E_xsq=self.mf_expected_Zsq(),
+                            E_mu=self.mf_expected_mu(),
+                            E_musq=self.mf_expected_musq(),
+                            E_ln_Z=E_ln_Z)).sum()
+
+        E_ln_notZ = self.mf_expected_log_notp(mu=self.mf_expected_mu())
+        vlb += ((1-self.mf_A) * TruncatedScalarGaussian(ub=0,
+                                                        mu=self.mf_expected_mu(),
+                                                        sigmasq=1.0)
+                .negentropy(E_x=self.mf_expected_Z(),
+                        E_xsq=self.mf_expected_Zsq(),
+                        E_mu=self.mf_expected_mu(),
+                        E_musq=self.mf_expected_musq(),
+                        E_ln_Z=E_ln_notZ)).sum()
 
         # -E[ln q(z | mf_mu_z, 1)]
+        vlb -= (self.mf_A * TruncatedScalarGaussian(lb=0,
+                                                    mu=self.mf_mu_Z,
+                                                    sigmasq=1.0)
+                .negentropy()).sum()
+
+        vlb -= ((1-self.mf_A) * TruncatedScalarGaussian(ub=0,
+                                                        mu=self.mf_mu_Z,
+                                                        sigmasq=1.0)
+                .negentropy()).sum()
 
         # E[ln p(mu0 | mu_{mu0}, sigma_{mu0})]
+        vlb += ScalarGaussian(mu=self.mu_mu_0, sigmasq=self.sigma_mu0)\
+               .negentropy(E_x=self.mf_mu_mu0,
+                           E_xsq=self.mf_expected_mu0sq())
 
         # -E[ln q(mu0 | mf_mu_mu0, mf_sigma_mu0)]
+        vlb -= ScalarGaussian(mu=self.mf_mu_mu0, sigmasq=self.mf_sigma_mu0).negentropy()
 
         # E[ln p(F | 0, sigma_{F})]
-
         # -E[ln q(F | mf_mu_F, mf_sigma_F)]
+        for n in xrange(self.N):
+            vlb += Gaussian(mu=np.zeros(self.D),
+                            Sigma=self.sigma_F *np.eye(self.D))\
+                .negentropy(E_x=self.mf_mu_F[n,:], E_xxT=self.mf_expected_ffT(n))
+
+            vlb -= Gaussian(mu=self.mf_mu_F[n,:],
+                            Sigma=self.mf_Sigma_F[n,:,:]).negentropy()
 
         # E[ln p(lmbda | mu_lmbda, sigma_{lmbda})]
+        if not self.lmbda_given:
+            vlb += Gaussian(mu=self.mu_lmbda,
+                            Sigma=self.sigma_lmbda * np.eye(self.D))\
+                .negentropy(E_x=self.mf_mu_lmbda, E_xxT=self.mf_expected_llT())
 
-        # -E[ln q(lmbda | mf_mu_lmbda, mf_sigma_lmbda)]
+            # -E[ln q(lmbda | mf_mu_lmbda, mf_sigma_lmbda)]
+            vlb -= Gaussian(mu=self.mf_mu_lmbda, Sigma=self.mf_Sigma_lmbda).negentropy()
 
         return vlb
 

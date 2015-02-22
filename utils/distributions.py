@@ -2,6 +2,55 @@ import numpy as np
 
 from graphistician.utils.utils import normal_cdf, normal_pdf
 
+
+class Bernoulli:
+    #TODO: Subclass Discrete distribution
+    def __init__(self, p=0.5):
+        assert np.all(p >= 0) and np.all(p <= 1.0)
+        self.p = p
+
+    def log_probability(self, x):
+        """
+        Log probability of x given p
+        :param x:
+        :return:
+        """
+        lp = x * np.log(self.p) + (1-x) * np.log(1.0-self.p)
+        lp = np.nan_to_num(lp)
+        return lp
+
+    def expected_x(self):
+        return self.p
+
+    def expected_notx(self):
+        return 1 - self.p
+
+    def negentropy(self, E_x=None, E_notx=None, E_ln_p=None, E_ln_notp=None):
+        """
+        Compute the entropy of the Bernoulli distribution.
+        :param E_x:         If given, use this in place of expectation wrt p
+        :param E_notx:      If given, use this in place of expectation wrt p
+        :param E_ln_p:      If given, use this in place of expectation wrt p
+        :param E_ln_notp:   If given, use this in place of expectation wrt p
+        :return: E[ ln p(x | p)]
+        """
+        if E_x is None:
+            E_x = self.expected_x()
+
+        if E_notx is None:
+            E_notx = self.expected_notx()
+
+        if E_ln_p is None:
+            E_ln_p = np.log(self.p)
+
+        if E_ln_notp is None:
+            E_ln_notp = np.log(1.0 - self.p)
+
+        H = E_x * E_ln_p + E_notx * E_ln_notp
+        H = np.nan_to_num(H)
+        return H
+
+
 class ScalarGaussian:
 
     def __init__(self, mu=0.0, sigmasq=1.0):
@@ -71,6 +120,10 @@ class TruncatedScalarGaussian:
         self.zlb = (self.lb-self.mu) / np.sqrt(self.sigmasq)
         self.zub = (self.ub-self.mu) / np.sqrt(self.sigmasq)
         self.Z   = normal_cdf(self.zub) - normal_cdf(self.zlb)
+
+        # Make sure Z is at least epsilon
+        self.Z = np.clip(self.Z, 1e-32, 1.0)
+        # assert np.all(self.Z > 0)
 
     def log_probability(self, x):
         """
@@ -201,4 +254,5 @@ class Gaussian:
         H += -0.5 * np.trace(E_Sigma_inv.dot(E_xxT))
         H += E_x.T.dot(E_Sigma_inv).dot(E_mu)
         H += -0.5 * np.trace(E_Sigma_inv.dot(E_mumuT))
+
         return H
