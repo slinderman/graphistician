@@ -650,7 +650,7 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
         """
         vlb = 0
 
-        # # E[ln p(z | A, mu0, F, lmbda)]
+        # E[ln p(z | A, mu0, F, lmbda)]
         E_ln_Z = self.mf_expected_log_p(mu=self.mf_expected_mu())
         vlb += (self.mf_A * TruncatedScalarGaussian(lb=0,
                                                     mu=self.mf_expected_mu(),
