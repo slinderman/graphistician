@@ -4,7 +4,7 @@ Demo of an eigenmodel.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from eigenmodel import Eigenmodel
+from graphistician.eigenmodel import Eigenmodel
 try:
     from hips.plotting.colormaps import harvard_colors
     color = harvard_colors()[0]
@@ -67,7 +67,6 @@ def demo(seed=None):
         lps.append(test_model.log_probability(A))
         print "LP: ", lps[-1]
         print ""
-        print "E_lmbda: ", test_model.mf_mu_lmbda
 
         # Update the test plot
         ax_test.cla()

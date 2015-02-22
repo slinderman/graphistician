@@ -3,9 +3,10 @@ from scipy.special import erf
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 
-from abstractions import AldousHooverNetwork
-from deps.pybasicbayes.abstractions import GibbsSampling, MeanField
-from utils.utils import sample_truncnorm, expected_truncnorm
+from graphistician.abstractions import AldousHooverNetwork
+from graphistician.deps.pybasicbayes.abstractions import GibbsSampling, MeanField
+from graphistician.utils.utils import sample_truncnorm, expected_truncnorm
+from graphistician.utils.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian
 
 class _EigenmodelBase(AldousHooverNetwork):
     """
@@ -417,6 +418,13 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
         if not self.lmbda_given:
             self._meanfieldupdate_lmbda()
 
+    def mf_expected_logp(self):
+        """
+        Compute the expected log probability of a connection under Z
+        :return:
+        """
+
+
     def mf_expected_Z(self):
         """
         Compute the expected value of Z given mf_A and mf_mu_Z
@@ -432,6 +440,9 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
 
         assert np.all(np.isfinite(E_Z))
         return E_Z
+
+    def mf_expected_Zsq(self):
+        return 1 + self.mf_expected_Z()**2
 
     def mf_expected_ffT(self, n):
         """
@@ -556,10 +567,37 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
         self.mf_mu_lmbda    = self.mf_Sigma_lmbda.dot(post_mean_dot_prec)
 
     def expected_log_likelihood(self,x):
-        raise NotImplementedError()
+        """
+        Compute the expected log likelihood of a graph x=A.
+        :param x:
+        :return:
+        """
 
     def get_vlb(self):
-        raise NotImplementedError()
+        """
+        Compute the variational lower bound.
+        :return:
+        """
+        vlb = 0
+
+        # E[ln p(z | A mu0, F, lmbda)]
+        vlb += self.mf_A * TruncatedScalarGaussian(lb=0).negentropy()
+
+        # -E[ln q(z | mf_mu_z, 1)]
+
+        # E[ln p(mu0 | mu_{mu0}, sigma_{mu0})]
+
+        # -E[ln q(mu0 | mf_mu_mu0, mf_sigma_mu0)]
+
+        # E[ln p(F | 0, sigma_{F})]
+
+        # -E[ln q(F | mf_mu_F, mf_sigma_F)]
+
+        # E[ln p(lmbda | mu_lmbda, sigma_{lmbda})]
+
+        # -E[ln q(lmbda | mf_mu_lmbda, mf_sigma_lmbda)]
+
+        return vlb
 
     def resample_from_mf(self):
         """

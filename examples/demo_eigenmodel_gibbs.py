@@ -4,7 +4,7 @@ Demo of an eigenmodel.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from eigenmodel import Eigenmodel
+from graphistician.eigenmodel import Eigenmodel
 try:
     from hips.plotting.colormaps import harvard_colors
     color = harvard_colors()[0]
@@ -27,7 +27,7 @@ def demo(seed=None):
 
     mu_lmbda    = 1.0     # Mean of the latent feature space metric
     sigma_lmbda = 0.001   # Variance of the latent feature space metric
-    true_model = Eigenmodel(N=N, D=D, p=p, r=sigma_F,
+    true_model = Eigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
                             mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
     # Sample a graph from the eigenmodel
@@ -41,7 +41,7 @@ def demo(seed=None):
     true_model.plot(A, ax=ax_true)
 
     # Make another model to fit the data
-    test_model = Eigenmodel(N=N, D=D, p=p, r=sigma_F,
+    test_model = Eigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
                             mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
     # Fit with Gibbs sampling
