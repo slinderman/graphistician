@@ -495,7 +495,6 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
         return E_Z
 
     def mf_expected_Zsq(self):
-        # import pdb; pdb.set_trace()
         if self.mf_A.dtype == np.bool:
             E_Zsq  = np.zeros((self.N, self.N))
             E_Zsq[self.mf_A]  = TruncatedScalarGaussian(mu=self.mf_mu_Z, lb=0).expected_xsq()[self.mf_A]
@@ -638,7 +637,6 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
         :param x:
         :return:
         """
-        # import pdb; pdb.set_trace()
         A = x
         assert A.shape == (self.N, self.N) and np.all(np.bitwise_or(A==0, A==1))
         log_p    = self.mf_expected_log_p()
@@ -650,7 +648,6 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
         Compute the variational lower bound.
         :return:
         """
-        # import pdb; pdb.set_trace()
         vlb = 0
 
         # # E[ln p(z | A, mu0, F, lmbda)]

@@ -123,7 +123,6 @@ class TruncatedScalarGaussian:
 
         # Make sure Z is at least epsilon
         self.Z = np.clip(self.Z, 1e-32, 1.0)
-        # assert np.all(self.Z > 0)
 
     def log_probability(self, x):
         """
@@ -211,7 +210,6 @@ class Gaussian:
         :param x:
         :return:
         """
-        # logdet_Sigma = np.linalg.slogdet(self.Sigma)[1]
         z = x-self.mu
         lp = -0.5*self.D*np.log(2*np.pi) -0.5*self.D*self.logdet_Sigma \
              -0.5 * z.T.dot(np.linalg.solve(self.Sigma, z))
