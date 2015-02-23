@@ -4,7 +4,7 @@ Demo of an eigenmodel.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from graphistician.eigenmodel import Eigenmodel
+from graphistician.eigenmodel import LogisticEigenmodel
 try:
     from hips.plotting.colormaps import harvard_colors
     color = harvard_colors()[0]
@@ -27,7 +27,7 @@ def demo(seed=None):
     lmbda = np.ones(D)
     mu_lmbda    = 1.0    # Mean of the feature space metric
     sigma_lmbda = 0.1    # Variance of the latent feature space metric
-    true_model = Eigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
+    true_model = LogisticEigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
                             lmbda=lmbda)
                             # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
@@ -38,7 +38,7 @@ def demo(seed=None):
     A = true_model.rvs()
 
     # Make another model to fit the data
-    test_model = Eigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
+    test_model = LogisticEigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
                             lmbda=lmbda)
                             # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
@@ -62,13 +62,14 @@ def demo(seed=None):
         # raw_input("Press enter to continue\n")
         print "Iteration ", itr
         test_model.meanfieldupdate(A)
-        vlbs.append(test_model.get_vlb())
+        # vlbs.append(test_model.get_vlb() + test_model.expected_log_likelihood(A))
+        vlbs.append(test_model.get_vlb() )
 
         # Resample from the variational posterior
         test_model.resample_from_mf()
         lps.append(test_model.log_probability(A))
         print "VLB: ", vlbs[-1]
-        # print "LP:  ", lps[-1]
+        print "LP:  ", lps[-1]
         print ""
 
         # Update the test plot
@@ -93,11 +94,11 @@ def demo(seed=None):
     plt.xlabel("Iteration")
     plt.ylabel("VLB")
 
-    # plt.figure()
-    # plt.plot(np.array(lps))
-    # plt.xlabel("Iteration")
-    # plt.ylabel("LL")
+    plt.figure()
+    plt.plot(np.array(lps))
+    plt.xlabel("Iteration")
+    plt.ylabel("LP")
     plt.show()
 
 # demo(2244520065)
-demo(11223344)
+demo()

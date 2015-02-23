@@ -1,6 +1,13 @@
 import numpy as np
 from scipy.special import erfc, erfcinv
 
+
+def logistic(x):
+    return 1./(1+np.exp(-x))
+
+def logit(p):
+    return np.log(p/(1-p))
+
 def normal_pdf(x, mu=0.0, sigma=1.0):
     z = (x-mu) / sigma
     return 1.0 / np.sqrt(2*np.pi) / sigma * np.exp(-0.5 * z**2)
@@ -30,6 +37,7 @@ def sample_truncnorm(mu=0, sigma=1, lb=-np.Inf, ub=np.Inf):
     zs = -np.sqrt(2) * erfcinv(2*cdfsamples)
 
     assert np.all(np.isfinite(zs))
+
 
     return sigma * zs + mu
 
