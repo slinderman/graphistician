@@ -43,7 +43,7 @@ def demo(seed=None):
                             # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
     # Initialize with the true model settings
-    test_model.init_with_gibbs(true_model)
+    # test_model.init_with_gibbs(true_model)
     test_model.resample_from_mf()
 
     # Make a figure to plot the true and inferred network
@@ -63,7 +63,6 @@ def demo(seed=None):
         print "Iteration ", itr
         test_model.meanfieldupdate(A)
         vlbs.append(test_model.get_vlb())
-        # vlbs.append(test_model.get_vlb() )
 
         # Resample from the variational posterior
         test_model.resample_from_mf()
@@ -80,24 +79,25 @@ def demo(seed=None):
 
     # Analyze the VLBs
     vlbs = np.array(vlbs)
-    finite_vlbs = vlbs[np.isfinite(vlbs)]
-    vlbs_increasing = np.all(np.diff(finite_vlbs) >= -1e-3)
-    print "VLBs increasing? ", vlbs_increasing
+    # vlbs[abs(vlbs) > 1e8] = np.nan
+    # finite = np.where(np.isfinite(vlbs))[0]
+    # finite_vlbs = vlbs[finite]
+    # vlbs_increasing = np.all(np.diff(finite_vlbs) >= -1e-3)
+    # print "VLBs increasing? ", vlbs_increasing
 
 
     plt.ioff()
     plt.figure()
-    plt.plot(np.array(vlbs))
+    # plt.plot(finite, finite_vlbs)
+    plt.plot(vlbs)
     plt.xlabel("Iteration")
     plt.ylabel("VLB")
-    if np.amax(abs(np.array(vlbs))) > 300:
-        plt.ylim([-300,300])
 
-    plt.figure()
-    plt.plot(np.array(lps))
-    plt.xlabel("Iteration")
-    plt.ylabel("LL")
+    # plt.figure()
+    # plt.plot(np.array(lps))
+    # plt.xlabel("Iteration")
+    # plt.ylabel("LL")
     plt.show()
 
 # demo(2244520065)
-demo(1234)
+demo()

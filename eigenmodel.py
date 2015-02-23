@@ -676,67 +676,40 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
         :return:
         """
         vlb = 0
-        E_log_p, E_log_notp = self.mf_expected_log_p_mc()
 
-        # # E[ln p(A | Z)] = 0 since Z is truncated to always
-        # # have the correct sign. Thus, A is a deterministic function
-        # # of Z, as desired.
-        # tmp = ScalarGaussian().negentropy(E_x=self.mf_expected_Z(),
-        #                      E_xsq=self.mf_expected_Zsq(),
-        #                      E_mu=self.mf_expected_mu(),
-        #                      E_musq=self.mf_expected_musq())
-        # vlb += tmp.sum()
+        # p(A=1) [E_{Z | A} [ln N(z | mu, sigma=1)],
+        # where z ~ TN(mu, 1, lb=0)
+        E_mu = self.mf_expected_mu()
+        E_musq = self.mf_expected_musq()
+        qZ1 = TruncatedScalarGaussian(lb=0, mu=self.mf_mu_Z, sigmasq=1.0)
+        tmp = ScalarGaussian().negentropy(E_x=qZ1.expected_x(),
+                                          E_xsq=qZ1.expected_xsq(),
+                                          E_mu=E_mu,
+                                          E_musq=E_musq)
+        vlb += (self.mf_A * tmp).sum()
 
-        # E[ln p(z | A, mu0, F, lmbda)] for A=1
-        tg0 = TruncatedScalarGaussian(lb=0, mu=self.mf_expected_mu())
-        tmp = self.mf_A * \
-              tg0.negentropy(E_x=self.mf_expected_Z(),
-                             E_xsq=self.mf_expected_Zsq(),
-                             E_mu=self.mf_expected_mu(),
-                             E_musq=self.mf_expected_musq(),
-                             E_ln_Z=E_log_p)
+        # p(A=0) [E_{Z | A} [ln N(z | mu, sigma=1)],
+        # where z ~ TN(mu, 1, ub=0)
+        qZ0 = TruncatedScalarGaussian(ub=0, mu=self.mf_mu_Z, sigmasq=1.0)
+        tmp = ScalarGaussian().negentropy(E_x=qZ0.expected_x(),
+                                          E_xsq=qZ0.expected_xsq(),
+                                          E_mu=E_mu,
+                                          E_musq=E_musq)
 
-        # np.fill_diagonal(tmp, 0)
-        vlb += tmp.sum()
-
-        # E[ln p(z | A, mu0, F, lmbda)] for A=0
-        tg1 = TruncatedScalarGaussian(ub=0, mu=self.mf_expected_mu(),
-                                      sigmasq=1.0)
-        tmp = ((1-self.mf_A) *
-                tg1.negentropy(E_x=self.mf_expected_Z(),
-                        E_xsq=self.mf_expected_Zsq(),
-                        E_mu=self.mf_expected_mu(),
-                        E_musq=self.mf_expected_musq(),
-                        E_ln_Z=E_log_notp))
-        vlb += tmp.sum()
-
-        print "E[ LN p(Z|A, mu0, F, lmbda)]:  ", vlb
+        vlb += ((1-self.mf_A) * tmp).sum()
 
         # -E[ln q(z | A, mf_mu_z, 1)] for A=1
-        tmp = (self.mf_A * TruncatedScalarGaussian(lb=0,
-                                                   mu=self.mf_mu_Z,
-                                                   sigmasq=1.0)
-                .negentropy())
-        vlb -= tmp.sum()
+        tmp = TruncatedScalarGaussian(lb=0,
+                                      mu=self.mf_mu_Z,
+                                      sigmasq=1.0).negentropy()
+        vlb -= ( self.mf_A * tmp).sum()
 
         # -E[ln q(z | A, mf_mu_z, 1)] for A=0
-        tmp = ((1-self.mf_A) * TruncatedScalarGaussian(ub=0,
-                                                       mu=self.mf_mu_Z,
-                                                       sigmasq=1.0)
-                .negentropy())
+        tmp = TruncatedScalarGaussian(ub=0,
+                                      mu=self.mf_mu_Z,
+                                      sigmasq=1.0).negentropy()
 
-        np.fill_diagonal(tmp, 0)
-        vlb -= tmp.sum()
-
-
-
-        # E[ln p(A | mu0, F, lmbda]
-        # E_log_p    = self.mf_expected_log_p(mu=self.mf_expected_mu())
-        # E_log_notp = self.mf_expected_log_notp(mu=self.mf_expected_mu())
-        vlb += Bernoulli().negentropy(E_x=self.mf_A, E_notx=1-self.mf_A,
-                                      E_ln_p=E_log_p, E_ln_notp=E_log_notp).sum()
-
-
+        vlb -= ((1-self.mf_A) * tmp).sum()
 
         # E[ln p(mu0 | mu_{mu0}, sigma_{mu0})]
         vlb += ScalarGaussian(mu=self.mu_mu_0, sigmasq=self.sigma_mu0)\
@@ -745,9 +718,6 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
 
         # -E[ln q(mu0 | mf_mu_mu0, mf_sigma_mu0)]
         vlb -= ScalarGaussian(mu=self.mf_mu_mu0, sigmasq=self.mf_sigma_mu0).negentropy()
-
-
-
 
         # E[ln p(F | 0, sigma_{F})]
         # -E[ln q(F | mf_mu_F, mf_sigma_F)]
@@ -759,9 +729,6 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
             vlb -= Gaussian(mu=self.mf_mu_F[n,:],
                             Sigma=self.mf_Sigma_F[n,:,:]).negentropy()
 
-
-
-
         # E[ln p(lmbda | mu_lmbda, sigma_{lmbda})]
         if not self.lmbda_given:
             vlb += Gaussian(mu=self.mu_lmbda,
@@ -772,56 +739,6 @@ class _MeanFieldEigenModel(_EigenmodelBase, MeanField):
             vlb -= Gaussian(mu=self.mf_mu_lmbda, Sigma=self.mf_Sigma_lmbda).negentropy()
 
         return vlb
-
-    def get_marginal_vlb(self):
-        """
-        Compute the variational lower bound.
-        :return:
-        """
-        vlb = 0
-
-        # E[ln p(A | mu0, F, lmbda]
-        E_log_p, E_log_notp = self.mf_expected_log_p_mc()
-        # E_log_p    = self.mf_expected_log_p(mu=self.mf_expected_mu())
-        # E_log_notp = self.mf_expected_log_notp(mu=self.mf_expected_mu())
-        vlb += Bernoulli().negentropy(E_x=self.mf_A, E_notx=1-self.mf_A,
-                                      E_ln_p=E_log_p, E_ln_notp=E_log_notp).sum()
-
-        # E[ln p(mu0 | mu_{mu0}, sigma_{mu0})]
-        vlb += ScalarGaussian(mu=self.mu_mu_0, sigmasq=self.sigma_mu0)\
-               .negentropy(E_x=self.mf_mu_mu0,
-                           E_xsq=self.mf_expected_mu0sq())
-
-        # -E[ln q(mu0 | mf_mu_mu0, mf_sigma_mu0)]
-        vlb -= ScalarGaussian(mu=self.mf_mu_mu0, sigmasq=self.mf_sigma_mu0).negentropy()
-
-
-
-
-        # E[ln p(F | 0, sigma_{F})]
-        # -E[ln q(F | mf_mu_F, mf_sigma_F)]
-        for n in xrange(self.N):
-            vlb += Gaussian(mu=np.zeros(self.D),
-                            Sigma=self.sigma_F *np.eye(self.D))\
-                .negentropy(E_x=self.mf_mu_F[n,:], E_xxT=self.mf_expected_ffT(n))
-
-            vlb -= Gaussian(mu=self.mf_mu_F[n,:],
-                            Sigma=self.mf_Sigma_F[n,:,:]).negentropy()
-
-
-
-
-        # E[ln p(lmbda | mu_lmbda, sigma_{lmbda})]
-        if not self.lmbda_given:
-            vlb += Gaussian(mu=self.mu_lmbda,
-                            Sigma=self.sigma_lmbda * np.eye(self.D))\
-                .negentropy(E_x=self.mf_mu_lmbda, E_xxT=self.mf_expected_llT())
-
-            # -E[ln q(lmbda | mf_mu_lmbda, mf_sigma_lmbda)]
-            vlb -= Gaussian(mu=self.mf_mu_lmbda, Sigma=self.mf_Sigma_lmbda).negentropy()
-
-        return vlb
-
 
     def resample_from_mf(self):
         """
