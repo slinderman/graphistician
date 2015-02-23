@@ -46,9 +46,6 @@ def demo(seed=None):
     test_model = LogisticEigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
                                           lmbda=lmbda)
 
-    # test_model.F = true_model.F.copy()
-    test_model.mu_0 = true_model.mu_0
-
     # Fit with Gibbs sampling
     N_samples = 1000
     lps       = []
