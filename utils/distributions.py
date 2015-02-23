@@ -46,8 +46,13 @@ class Bernoulli:
         if E_ln_notp is None:
             E_ln_notp = np.log(1.0 - self.p)
 
-        H = E_x * E_ln_p + E_notx * E_ln_notp
-        H = np.nan_to_num(H)
+        if E_x.dtype == np.bool:
+            H = np.zeros_like(E_x)
+            H[E_x] = E_ln_p[E_x]
+            H[E_notx] = E_ln_notp[E_notx]
+        else:
+            H = E_x * E_ln_p + E_notx * E_ln_notp
+        # H = np.nan_to_num(H)
         return H
 
 
@@ -122,7 +127,7 @@ class TruncatedScalarGaussian:
         self.Z   = normal_cdf(self.zub) - normal_cdf(self.zlb)
 
         # Make sure Z is at least epsilon
-        self.Z = np.clip(self.Z, 1e-32, 1.0)
+        # self.Z = np.clip(self.Z, 1e-32, 1.0)
 
     def log_probability(self, x):
         """

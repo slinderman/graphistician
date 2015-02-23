@@ -25,8 +25,8 @@ def demo(seed=None):
     p = 0.01    # Baseline average probability of connection
     sigma_F     = 9.0    # Variance of the feature space
     lmbda = np.ones(D)
-    # mu_lmbda    = 1.0    # Mean of the feature space metric
-    # sigma_lmbda = 0.1    # Variance of the latent feature space metric
+    mu_lmbda    = 1.0    # Mean of the feature space metric
+    sigma_lmbda = 0.1    # Variance of the latent feature space metric
     true_model = Eigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
                             lmbda=lmbda)
                             # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
@@ -73,9 +73,16 @@ def demo(seed=None):
         print ""
 
         # Update the test plot
-        ax_test.cla()
-        test_model.plot(A, ax=ax_test, color=color, F_true=true_model.F, lmbda_true=true_model.lmbda)
-        plt.pause(0.001)
+        if itr % 20 == 0:
+            ax_test.cla()
+            test_model.plot(A, ax=ax_test, color=color, F_true=true_model.F, lmbda_true=true_model.lmbda)
+            plt.pause(0.001)
+
+    # Analyze the VLBs
+    vlbs = np.array(vlbs)
+    finite_vlbs = vlbs[np.isfinite(vlbs)]
+    vlbs_increasing = np.all(np.diff(finite_vlbs) >= -1e-3)
+    print "VLBs increasing? ", vlbs_increasing
 
 
     plt.ioff()
@@ -83,6 +90,8 @@ def demo(seed=None):
     plt.plot(np.array(vlbs))
     plt.xlabel("Iteration")
     plt.ylabel("VLB")
+    if np.amax(abs(np.array(vlbs))) > 300:
+        plt.ylim([-300,300])
 
     plt.figure()
     plt.plot(np.array(lps))
