@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from graphistician.eigenmodel import LogisticEigenmodel
+from graphistician.networks import GaussianWeightedEigenmodel
+
 try:
     from hips.plotting.colormaps import harvard_colors
     color = harvard_colors()[0]
@@ -24,16 +26,17 @@ def demo(seed=None):
     D = 2       # Dimensionality of the feature space
     p = 0.01    # Baseline average probability of connection
     sigma_F = 3**2    # Scale of the feature space
-
     lmbda       = np.ones(D)
     mu_lmbda    = 1.0     # Mean of the latent feature space metric
     sigma_lmbda = 0.001   # Variance of the latent feature space metric
-    true_model = LogisticEigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
-                                          lmbda=lmbda)
+    eigenmodel_args = {"p": p, "sigma_F": sigma_F, "lmbda": lmbda}
+    B = 2       # Dimensionality of the weights
+    true_model = GaussianWeightedEigenmodel(N=N, D=D, B=B,
+                                            eigenmodel_args=eigenmodel_args)
 
     # Sample a graph from the eigenmodel
     # import pdb; pdb.set_trace()
-    A = true_model.rvs()
+    A,W = true_model.rvs()
 
     # Make a figure to plot the true and inferred network
     plt.ion()
@@ -43,16 +46,16 @@ def demo(seed=None):
     true_model.plot(A, ax=ax_true)
 
     # Make another model to fit the data
-    test_model = LogisticEigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
-                                          lmbda=lmbda)
+    test_model = GaussianWeightedEigenmodel(N=N, D=D, B=B,
+                                            eigenmodel_args=eigenmodel_args)
 
     # Fit with Gibbs sampling
     N_samples = 1000
     lps       = []
     for smpl in xrange(N_samples):
         print "Iteration ", smpl
-        test_model.resample(A)
-        lps.append(test_model.log_probability(A))
+        test_model.resample((A, W))
+        lps.append(test_model.log_probability((A,W)))
         print "LP: ", lps[-1]
         print ""
 
@@ -64,10 +67,24 @@ def demo(seed=None):
             plt.pause(0.001)
 
     plt.ioff()
+    # Plot the log likelihood as a function of iteration
     plt.figure()
     plt.plot(np.array(lps))
     plt.xlabel("Iteration")
     plt.ylabel("LL")
+
+    # Plot the inferred weights
+    plt.figure()
+    plt.errorbar(np.arange(B), test_model.mu_w,
+                 yerr=np.sqrt(np.diag(test_model.Sigma_w)),
+                 color=color)
+
+    plt.errorbar(np.arange(B), true_model.mu_w,
+                 yerr=np.sqrt(np.diag(true_model.Sigma_w)),
+                 color='k')
+
+    plt.xlim(-1, B+1)
+
     plt.show()
 
 demo()

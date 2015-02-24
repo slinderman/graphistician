@@ -10,11 +10,12 @@ class GaussianWeights(Gaussian):
     Gaussian weight distribution.
     """
     def __init__(self, mu_0, Sigma_0, nu_0, kappa_0):
-        super(GaussianWeights, self).__init__(mu_0=mu_0, sigma_0=Sigma_0, nu_0=nu_0, kappa_0=kappa_0)
+        super(GaussianWeights, self).__init__(mu_0=mu_0, sigma_0=Sigma_0,
+                                              nu_0=nu_0, kappa_0=kappa_0)
 
     # Override the mean field updates to allow downstream components to
     # pass in expected statistics of the data.
-    def meanfieldupdate(self, exp_ss_data, weights):
+    def meanfieldupdate(self, exp_ss_data, weights=None):
         """
         Perform mean field update with the expected sufficient statistics of the data
         :param exp_ss_data: a tuple E_x, E_xxT
@@ -28,18 +29,27 @@ class GaussianWeights(Gaussian):
         D = self.D
         assert E_x.shape == (N,D)
         assert E_xxT.shape == (N,D,D)
-        assert weights.shape == (N,)
+
+        if weights is not None:
+            assert weights.shape == (N,)
+        else:
+            weights = np.ones(N)
 
         self.mf_natural_hypparam = \
                 self.natural_hypparam + self._get_weighted_statistics(E_x, E_xxT, weights)
 
-    def meanfield_sgdstep(self, exp_ss_data, weights,minibatchfrac,stepsize):
+    def meanfield_sgdstep(self, exp_ss_data, minibatchfrac, stepsize, weights=None):
+
         E_x, E_xxT = exp_ss_data
         N = E_x.shape[0]
         D = self.D
         assert E_x.shape == (N,D)
         assert E_xxT.shape == (N,D,D)
-        assert weights.shape == (N,)
+
+        if weights is not None:
+            assert weights.shape == (N,)
+        else:
+            weights = np.ones(N)
 
         self.mf_natural_hypparam = \
                 (1-stepsize) * self.mf_natural_hypparam + stepsize * (
@@ -82,6 +92,8 @@ class GaussianWeights(Gaussian):
     def mf_expected_logdet_Sigma(self):
         return -self._loglmbdatilde()
 
+    def resample_from_mf(self):
+        self._resample_from_mf()
 
 class GammaWeights:
 
