@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.stats import truncnorm, norm
-from graphistician.utils.distributions import TruncatedScalarGaussian, ScalarGaussian
-from graphistician.utils.utils import normal_cdf
+from utils.distributions import TruncatedScalarGaussian, ScalarGaussian
+from utils.utils import normal_cdf
 
 def test_truncated_scalar_gaussian_lb():
     tn0_test = TruncatedScalarGaussian(lb=0)

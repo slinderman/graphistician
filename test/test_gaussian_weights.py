@@ -1,5 +1,5 @@
 import numpy as np
-from graphistician.weights import GaussianWeights
+from weights import GaussianWeights
 
 def test_mf_expectations():
     """

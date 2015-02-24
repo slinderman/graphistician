@@ -3,7 +3,7 @@ Prior distribution over weight models that can be combined with the graph models
 """
 import numpy as np
 
-from graphistician.deps.pybasicbayes.distributions import Gaussian
+from deps.pybasicbayes.distributions import Gaussian
 
 class GaussianWeights(Gaussian):
     """

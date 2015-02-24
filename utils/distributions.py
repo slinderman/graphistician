@@ -1,7 +1,6 @@
 import numpy as np
 
-from graphistician.utils.utils import normal_cdf, normal_pdf
-
+from utils import normal_cdf, normal_pdf
 
 class Bernoulli:
     #TODO: Subclass Discrete distribution

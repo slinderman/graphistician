@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 from scipy.stats import norm, probplot
 
-from graphistician.eigenmodel import _GibbsLogisticEigenmodel
+from eigenmodel import LogisticEigenmodel
 
 def demo(seed=None):
     if seed is None:
@@ -23,18 +23,12 @@ def demo(seed=None):
     sigma_F = 1.0     # Variance of the feature space
     sigma_lmbda = 1.0     # Variance of the feature space metric, Lambda
     lmbda = np.ones(D)
-    model = _GibbsLogisticEigenmodel(N=N, D=D, p=p,
+    model = LogisticEigenmodel(N=N, D=D, p=p,
                        sigma_mu0=sigma_mu0,
                        sigma_F=sigma_F,
                        sigma_lmbda=sigma_lmbda)
-    # model = _GibbsLogisticEigenmodel(N=N, D=D, p=p,
-    #                    sigma_mu0=sigma_mu0,
-    #                    sigma_F=sigma_F,
-    #                    lmbda=lmbda)
-
 
     # Sample a graph from the eigenmodel
-    import pdb; pdb.set_trace()
     A = model.rvs()
 
     # Run the Geweke test

@@ -4,10 +4,10 @@ from scipy.special import erf
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 
-from graphistician.abstractions import AldousHooverNetwork
-from graphistician.deps.pybasicbayes.abstractions import GibbsSampling, MeanField
-from graphistician.utils.utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
-from graphistician.utils.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian, Bernoulli
+from abstractions import AldousHooverNetwork
+from deps.pybasicbayes.abstractions import GibbsSampling, MeanField
+from utils.utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
+from utils.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian, Bernoulli
 
 from pypolyagamma import pgdrawv, PyRNG
 
@@ -1267,4 +1267,5 @@ class LogisticEigenmodel(_GibbsLogisticEigenmodel, _MeanFieldLogisticEigenModel)
 
 
 # Set the default Eigenmodel
-Eigenmodel = ProbitEigenmodel
+# Eigenmodel = ProbitEigenmodel
+Eigenmodel = LogisticEigenmodel
