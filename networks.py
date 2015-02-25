@@ -120,8 +120,32 @@ class GaussianWeightedEigenmodel():
         weights = E_A.reshape((self.N**2,))
         self.weight_model.meanfieldupdate(exp_ss_data=exp_ss_data, weights=weights)
 
+    # Expose network level expectations
+    def mf_expected_mu(self):
+        E_mu = self.weight_model.mf_expected_mu()
+        return np.tile(E_mu[None, None, :], [self.N, self.N, 1])
+
+    def mf_expected_mumuT(self):
+        E_mumuT = self.weight_model.mf_expected_mumuT()
+        return np.tile(E_mumuT[None, None, :, :], [self.N, self.N, 1, 1])
+
+    def mf_expected_Sigma_inv(self):
+        E_Sigma_inv = self.weight_model.mf_expected_Sigma_inv()
+        return np.tile(E_Sigma_inv[None, None, :, :], [self.N, self.N, 1, 1])
+
+    def mf_expected_logdet_Sigma(self):
+        E_logdet_Sigma = self.weight_model.mf_expected_logdet_Sigma()
+        return E_logdet_Sigma * np.ones((self.N, self.N))
+
+    def expected_log_likelihood(self, E_A, E_W, E_WWT):
+        ell = 0
+        ell += self.graph_model.expected_log_likelihood(E_A)
+        ell += self.weight_model.expected_log_likelihood((E_W, E_WWT))
+        return ell
+
     def get_vlb(self):
-        vlb  = self.graph_model.get_vlb()
+        vlb = 0
+        vlb  += self.graph_model.get_vlb()
         vlb += self.weight_model.get_vlb()
         return vlb
 

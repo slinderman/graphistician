@@ -4,7 +4,7 @@ Demo of an eigenmodel.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from eigenmodel import LogisticEigenmodel
+from networks import GaussianWeightedEigenmodel
 try:
     from hips.plotting.colormaps import harvard_colors
     color = harvard_colors()[0]
@@ -22,24 +22,31 @@ def demo(seed=None):
     # Create an eigenmodel with N nodes and D-dimensional feature vectors
     N = 10      # Number of nodes
     D = 2       # Dimensionality of the feature space
+    B = 2       # Weight dimensionality
     p = 0.01    # Baseline average probability of connection
     sigma_F     = 9.0    # Variance of the feature space
     lmbda = np.ones(D)
     mu_lmbda    = 1.0    # Mean of the feature space metric
     sigma_lmbda = 0.1    # Variance of the latent feature space metric
-    true_model = LogisticEigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
-                            lmbda=lmbda)
+    eigenmodel_args = {"p": p, "sigma_F": sigma_F, "lmbda": lmbda}
+    true_model = GaussianWeightedEigenmodel(N=N, D=D, B=B,
+                                            eigenmodel_args=eigenmodel_args)
                             # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
     # Override the latent feature metric
     true_model.lmbda = np.ones((2,))
 
     # Sample a graph from the eigenmodel
-    A = true_model.rvs()
+    A,W = true_model.rvs()
+    # Compute W*W.T
+    WWT = np.zeros((N,N,B,B))
+    for n1 in xrange(N):
+        for n2 in xrange(N):
+            WWT[n1,n2,:,:] = np.outer(W[n1,n2,:], W[n1,n2,:])
 
     # Make another model to fit the data
-    test_model = LogisticEigenmodel(N=N, D=D, p=p, sigma_F=sigma_F,
-                            lmbda=lmbda)
+    test_model = GaussianWeightedEigenmodel(N=N, D=D, B=B,
+                                            eigenmodel_args=eigenmodel_args)
                             # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
     # Initialize with the true model settings
@@ -55,19 +62,19 @@ def demo(seed=None):
     test_model.plot(A, ax=ax_test)
 
     # Fit with mean field variational inference
-    N_iters = 1000
-    lps     = []
-    vlbs    = []
+    N_iters = 100
+    lps     = [test_model.log_probability((A,W))]
+    vlbs    = [test_model.get_vlb() + test_model.expected_log_likelihood(A, W, WWT)]
     for itr in xrange(N_iters):
         # raw_input("Press enter to continue\n")
         print "Iteration ", itr
-        test_model.meanfieldupdate(A)
-        # vlbs.append(test_model.get_vlb() + test_model.expected_log_likelihood(A))
-        vlbs.append(test_model.get_vlb() )
+        test_model.meanfieldupdate(A, W, WWT)
+        vlbs.append(test_model.get_vlb() + test_model.expected_log_likelihood(A, W, WWT))
+        # vlbs.append(test_model.get_vlb() )
 
         # Resample from the variational posterior
         test_model.resample_from_mf()
-        lps.append(test_model.log_probability(A))
+        lps.append(test_model.log_probability((A,W)))
         print "VLB: ", vlbs[-1]
         print "LP:  ", lps[-1]
         print ""
@@ -98,6 +105,19 @@ def demo(seed=None):
     plt.plot(np.array(lps))
     plt.xlabel("Iteration")
     plt.ylabel("LP")
+
+    # Plot the inferred weights
+    plt.figure()
+    plt.errorbar(np.arange(B), test_model.mu_w,
+                 yerr=np.sqrt(np.diag(test_model.Sigma_w)),
+                 color=color)
+
+    plt.errorbar(np.arange(B), true_model.weight_model.mf_expected_mu(),
+                 yerr=np.sqrt(np.diag(true_model.weight_model.mf_expected_Sigma())),
+                 color='k')
+
+    plt.xlim(-1, B+1)
+
     plt.show()
 
 # demo(2244520065)

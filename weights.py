@@ -72,6 +72,32 @@ class GaussianWeights(Gaussian):
         return out
 
     # Expose mean field expectations
+    def expected_log_likelihood(self, x):
+        from utils.distributions import Gaussian as G
+
+        E_W, E_WWT = x
+        N = E_W.shape[0]
+        assert E_W.shape == (N,N,self.D)
+        assert E_WWT.shape == (N,N,self.D,self.D)
+
+        # E[LN p(W | mu, Sigma)]
+        E_mu = self.mf_expected_mu()
+        E_mumuT = self.mf_expected_mumuT()
+        E_Sigma_inv = self.mf_expected_Sigma_inv()
+        E_logdet_Sigma = self.mf_expected_logdet_Sigma()
+
+        ell = 0
+        for n_pre in xrange(N):
+            for n_post in xrange(N):
+                ell += G().negentropy(E_x=E_W[n_pre, n_post, :],
+                                      E_xxT=E_WWT[n_pre, n_post, :, :],
+                                      E_mu=E_mu,
+                                      E_mumuT=E_mumuT,
+                                      E_Sigma_inv=E_Sigma_inv,
+                                      E_logdet_Sigma=E_logdet_Sigma).sum()
+
+        return ell
+
     def mf_expected_mu(self):
         return self.mu_mf
 
