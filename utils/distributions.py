@@ -2,6 +2,53 @@ import numpy as np
 
 from utils import normal_cdf, normal_pdf
 
+
+class Discrete(object):
+    def __init__(self, p=0.5*np.ones(2)):
+        assert np.all(p >= 0) and p.ndim == 1 and np.allclose(p.sum(), 1.0), \
+            "p must be a probability vector that sums to 1.0"
+        self.p = p
+        self.D = p.size
+
+    def _is_one_hot(self, x):
+        return x.shape == (self.D,) and x.dtype == np.int and x.sum() == 1
+
+    def _isindex(self, x):
+        return isinstance(x, int) and x >= 0 and x < self.D
+
+    def log_probability(self, x):
+        # TODO: Handle broadcasting
+        assert self._is_one_hot(x) or self._isindex(x)
+
+        if self._is_one_hot(x):
+            lp = x.dot(np.log(self.p))
+        elif self._isindex(x):
+            lp = np.log(self.p[x])
+        else:
+            raise Exception("x must be a one-hot vector or an index")
+
+        return lp
+
+    def expected_x(self):
+        return self.p
+
+    def negentropy(self, E_x=None, E_ln_p=None):
+        """
+        Compute the negative entropy of the discrete distribution.
+
+        :param E_x:     Expected observation
+        :param E_ln_p:  Expected log probability
+        :return:
+        """
+        if E_x is None:
+            E_x = self.expected_x()
+
+        if E_ln_p is None:
+            E_ln_p = np.log(self.p)
+
+        H = E_x.dot(E_ln_p)
+        return np.nan_to_num(H)
+
 class Bernoulli:
     #TODO: Subclass Discrete distribution
     def __init__(self, p=0.5):
@@ -258,3 +305,67 @@ class Gaussian:
         H += -0.5 * np.trace(E_Sigma_inv.dot(E_mumuT))
 
         return H
+
+
+class Dirichlet(object):
+    def __init__(self, gamma):
+        assert np.all(gamma) >= 0 and gamma.shape[-1] >= 1
+        self.gamma = gamma
+
+    def log_probability(self, x):
+        assert np.allclose(x.sum(axis=-1), 1.0) and np.amin(x) >= 0.0
+        return gammaln(self.gamma.sum()) - gammaln(self.gamma).sum() \
+               + ((self.gamma-1) * np.log(x)).sum(axis=-1)
+
+    def expected_g(self):
+        return self.gamma / self.gamma.sum(axis=-1, keepdims=True)
+
+    def expected_log_g(self):
+        return psi(self.gamma) - psi(self.gamma.sum(axis=-1, keepdims=True))
+
+    def negentropy(self, E_ln_g=None):
+        """
+        Compute the entropy of the gamma distribution.
+
+        :param E_ln_g:    If given, use this in place of expectation wrt tau1 and tau0
+        :return: E[ ln p(g | gamma)]
+        """
+        if E_ln_g is None:
+            E_ln_g = self.expected_log_g()
+
+        H =  gammaln(self.gamma.sum(axis=-1, keepdims=True)).sum()
+        H += -gammaln(self.gamma).sum()
+        H += ((self.gamma - 1) * E_ln_g).sum()
+        return H
+
+
+class Beta(Dirichlet):
+    def __init__(self, tau1, tau0):
+        tau1 = np.atleast_1d(tau1)
+        tau0 = np.atleast_1d(tau0)
+        gamma = np.concatenate((tau1[...,None], tau0[...,None]), axis=-1)
+        super(Beta, self).__init__(gamma)
+
+    def log_probability(self, p):
+        x = np.concatenate((p[...,None], 1-p[...,None]), axis=-1)
+        return super(Beta, self).log_probability(x)
+
+    def expected_p(self):
+        E_g = self.expected_g()
+        return E_g[...,0]
+
+    def expected_log_p(self):
+        E_logg = self.expected_log_g()
+        return E_logg[...,0]
+
+    def expected_log_notp(self):
+        E_logg = self.expected_log_g()
+        return E_logg[...,1]
+
+    def negentropy(self, E_ln_p=None, E_ln_notp=None):
+        if E_ln_p is not None and E_ln_notp is not None:
+            E_ln_g = np.concatenate((E_ln_p[...,None], E_ln_notp[...,None]), axis=-1)
+        else:
+            E_ln_g = None
+
+        return super(Beta, self).negentropy(E_ln_g=E_ln_g)
