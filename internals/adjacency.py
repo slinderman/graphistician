@@ -45,6 +45,9 @@ class BernoulliEdges(Distribution):
     def get_vlb(self):
         return 0
 
+    def resample_from_mf(self):
+        pass
+
 
 class BetaBernoulliEdges(Distribution):
     def __init__(self, tau1, tau0):
