@@ -3,7 +3,6 @@ Prior distribution over weight models that can be combined with the graph models
 """
 import numpy as np
 
-from abstractions import GaussianWeightedDirectedNetwork, WeightedDirectedNetwork
 from deps.pybasicbayes.distributions import Gaussian
 
 class GaussianWeights(Gaussian):
@@ -19,7 +18,7 @@ class GaussianWeights(Gaussian):
         return 0
 
     def resample(self, networks=[]):
-        if isinstance(networks, WeightedDirectedNetwork):
+        if not isinstance(networks, list):
             networks = [networks]
 
         if len(networks) > 0:
@@ -105,9 +104,8 @@ class GaussianWeights(Gaussian):
 
     # Expose mean field expectations
     def expected_log_likelihood(self, network):
-        from utils.distributions import Gaussian as G
+        from internals.distributions import Gaussian as G
 
-        assert isinstance(network, GaussianWeightedDirectedNetwork)
         E_W, E_WWT = network.E_W, network.E_WWT
         N = E_W.shape[0]
         assert E_W.shape == (N,N,self.D)

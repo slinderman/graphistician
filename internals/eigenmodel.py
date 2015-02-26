@@ -2,14 +2,13 @@ import abc
 import numpy as np
 from scipy.special import erf
 from scipy.stats import norm
+from pypolyagamma import pgdrawv, PyRNG
+
 import matplotlib.pyplot as plt
 
-from abstractions import DirectedNetwork
 from deps.pybasicbayes.abstractions import GibbsSampling, MeanField
-from utils.utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
-from utils.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian, Bernoulli
-
-from pypolyagamma import pgdrawv, PyRNG
+from utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
+from distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian
 
 
 class _EigenmodelBase(object):
@@ -840,7 +839,6 @@ class _GibbsLogisticEigenmodel(_LogisticEigenmodelBase, GibbsSampling):
         """
         if not isinstance(networks, list):
             networks = [networks]
-        assert all([isinstance(n, DirectedNetwork) for n in networks])
         As = [network.A for network in networks]
 
         # Sample auxiliary variables for each graph in data
@@ -1007,7 +1005,6 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         :param E_A:     Expected value of the adjacency matrix
         :return:
         """
-        assert isinstance(network, DirectedNetwork)
         E_A = network.E_A
 
         assert isinstance(E_A, np.ndarray) and E_A.shape == (self.N, self.N) \
