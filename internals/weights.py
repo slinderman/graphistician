@@ -9,7 +9,21 @@ class GaussianWeights(Gaussian):
     """
     Gaussian weight distribution.
     """
-    def __init__(self, mu_0, Sigma_0, nu_0, kappa_0):
+    def __init__(self, B, mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None):
+        # Initialize the weight model
+        # Set defaults for weight model parameters
+        if mu_0 is None:
+            mu_0 = np.zeros(B)
+
+        if Sigma_0 is None:
+            Sigma_0 = np.eye(B)
+
+        if nu_0 is None:
+            nu_0 = B + 2
+
+        if kappa_0 is None:
+            kappa_0 = 1.0
+
         super(GaussianWeights, self).__init__(mu_0=mu_0, sigma_0=Sigma_0,
                                               nu_0=nu_0, kappa_0=kappa_0)
 

@@ -8,7 +8,7 @@ from scipy.special import psi
 from scipy.misc import logsumexp
 
 from abstractions import GaussianWeightedNetworkDistribution, NetworkDistribution, \
-    WeightedDirectedNetwork
+    WeightedDirectedNetwork, FixedGaussianNetwork
 from internals.deps.pybasicbayes.util.stats import sample_discrete_from_log
 from internals.distributions import Bernoulli, Beta, Dirichlet, Discrete
 from internals.weights import GaussianWeights
@@ -35,18 +35,17 @@ class _StochasticBlockModelBase(NetworkDistribution):
     _weight_class = None
     _default_weight_hypers = {}
 
-    def __init__(self, population,
+    def __init__(self, N, B,
                  C=1,
                  c=None, m=None, pi=1.0,
-                 p=None, tau0=0.1, tau1=0.1,
+                 p=None, tau0=1.0, tau1=1.0,
                  weight_hypers={},
                  allow_self_connections=True):
         """
         Initialize SBM with parameters defined above.
         """
-        self.population = population
-        self.N = self.population.N
-        self.B = self.population.B
+        self.N = N
+        self.B = B
 
         assert isinstance(C, int) and C >= 1, "C must be a positive integer number of blocks"
         self.C = C
@@ -96,11 +95,10 @@ class _StochasticBlockModelBase(NetworkDistribution):
         self.weight_hypers = copy.deepcopy(self._default_weight_hypers)
         self.weight_hypers.update(weight_hypers)
         self.weight_models = \
-            [[self._weight_class(self,
+            [[self._weight_class(self.B,
                                  **self.weight_hypers)
               for c in range(self.C)]
              for c in range(self.C)]
-
 
     @property
     def P(self):
@@ -113,6 +111,22 @@ class _StochasticBlockModelBase(NetworkDistribution):
             np.fill_diagonal(P, 0.0)
         return P
 
+    def log_prior(self):
+        """
+        Compute the log likelihood of a set of SBM parameters
+
+        :param x:    (m,p,v) tuple
+        :return:
+        """
+
+
+        lp = 0
+        lp += Dirichlet(self.pi).log_probability(self.m)
+        lp += Beta(self.tau1 * np.ones((self.C, self.C)),
+                   self.tau0 * np.ones((self.C, self.C))).\
+            log_probability(self.p).sum()
+        lp += (np.log(self.m)[self.c]).sum()
+        return lp
 
     # def log_likelihood(self, x):
     #     """
@@ -134,13 +148,25 @@ class _StochasticBlockModelBase(NetworkDistribution):
     # def log_probability(self):
     #     return self.log_likelihood((self.m, self._p, self.v, self.c))
 
+    def rvs(self, size=[]):
+        # Sample a network given m, c, p, weight distributions
+        A = np.zeros((self.N, self.N))
+        W = np.zeros((self.N, self.N, self.B))
+
+        for c1 in xrange(self.C):
+            for c2 in xrange(self.C):
+                blk = (self.c==c1)[:,None] * (self.c==c2)[None,:]
+                A[blk] = np.random.rand(blk.sum()) < self.p[c1,c2]
+                W[blk,:] = self.weight_models[c1][c2].rvs(size=blk.sum())
+
+        return FixedGaussianNetwork(A,W)
 
     def invariant_sbm_order(self):
         """
         Return an (almost) invariant ordering of the block labels
         """
         # Get the counts for each cluster
-        blocksz = np.bincount(self.c, self.C)
+        blocksz = np.bincount(self.c, minlength=self.C)
 
         # Sort by size to get new IDs
         corder = np.argsort(blocksz)
@@ -154,24 +180,52 @@ class _StochasticBlockModelBase(NetworkDistribution):
         perm = np.argsort(-newc)
         return perm
 
+    def plot(self, network, ax=None, color='k', F_true=None, lmbda_true=None):
+        """
+        """
+
+        import matplotlib.pyplot as plt
+        if ax is None:
+            fig = plt.figure()
+            ax  = fig.add_subplot(111, aspect="equal")
+
+        perm = self.invariant_sbm_order()
+        A = network.A[np.ix_(perm,perm)]
+        W = network.W.sum(2)[np.ix_(perm, perm)]
+        wlim = np.amax(abs(W))
+        ax.imshow(A*W, interpolation="none", cmap="RdGy",
+                  vmin=-wlim, vmax=wlim)
+
+        return ax
+
 class _GibbsSBM(_StochasticBlockModelBase):
     """
     Implement Gibbs sampling for SBM
     """
     def resample(self, networks=[]):
-        As = [n.A for n in networks]
-        Ws = [n.W for n in networks]
+
+        if not isinstance(networks, list):
+            networks = [networks]
+
+        # TODO: Handle multiple networks
+        assert len(networks) == 1
+        network = networks[0]
+
+        # As = [n.A for n in networks]
+        # Ws = [n.W for n in networks]
+        A = network.A
+        W = network.W
 
         # Resample weight models
         for c1 in xrange(self.C):
             for c2 in xrange(self.C):
                 c1_and_c2 = (self.c==c1)[:,None] * (self.c==c2)[None, :]
-                Wc1c2 = np.vstack([W[c1_and_c2, :] for W in Ws])
-                self.weight_models[c1][c2].resample(Wc1c2)
+                subnet = FixedGaussianNetwork(A * c1_and_c2, W)
+                # Wc1c2 = np.vstack([W[c1_and_c2, :] for W in Ws])
+                self.weight_models[c1][c2].resample(subnet)
 
-        # TODO: Support lists of observations
-        self.resample_p(As[0])
-        self.resample_c(As[0], Ws[0])
+        self.resample_p([A])
+        self.resample_c(networks[0])
         self.resample_m()
 
     def resample_p(self, As):
@@ -181,10 +235,10 @@ class _GibbsSBM(_StochasticBlockModelBase):
         for c1 in xrange(self.C):
             for c2 in xrange(self.C):
 
-                n_conns   = sum([A[np.ix_(self.c==c1,
-                                          self.c==c2)] for A in As])
-                n_noconns = sum([1 - A[np.ix_(self.c==c1,
-                                              self.c==c2)] for A in As])
+                n_conns   = sum([A[np.ix_(self.c==c1, self.c==c2)].sum()
+                                 for A in As])
+                n_noconns = sum([(1 - A[np.ix_(self.c==c1, self.c==c2)]).sum()
+                                 for A in As])
 
                 if not self.allow_self_connections:
                     # TODO: Account for self connections
@@ -258,10 +312,10 @@ class _MeanFieldSBM(_StochasticBlockModelBase):
     """
     Add mean field updates
     """
-    def __init__(self, population,
+    def __init__(self, N, B,
                  **kwargs):
 
-        super(_MeanFieldSBM, self).__init__(population, **kwargs)
+        super(_MeanFieldSBM, self).__init__(N, B, **kwargs)
 
         # Initialize mean field parameters
         self.mf_pi     = np.ones(self.C)
@@ -474,6 +528,9 @@ class _MeanFieldSBM(_StochasticBlockModelBase):
         E_log_m = psi(self.mf_pi) - psi(self.mf_pi.sum())
         return E_log_m
 
+    def expected_log_likelihood(self, network):
+        raise NotImplementedError()
+
     def get_vlb(self):
         vlb = 0
 
@@ -530,8 +587,7 @@ class _MeanFieldSBM(_StochasticBlockModelBase):
 class GaussianStochasticBlockModel(_GibbsSBM, _MeanFieldSBM, GaussianWeightedNetworkDistribution):
 
     _weight_class = GaussianWeights
-    _default_weight_hypers = {"mu": None, "Sigma": None,
-                              "mu0": 0.0, "kappa0": 1.0, "nu0": 1.0, "Sigma0": 1.0}
+    _default_weight_hypers = {}
 
     @property
     def Mu(self):
@@ -569,8 +625,8 @@ class GaussianStochasticBlockModel(_GibbsSBM, _MeanFieldSBM, GaussianWeightedNet
         :param n2:
         :return:
         """
-        E_W = self.population.weight_model.mf_expected_W()
-        E_WWT = self.population.weight_model.mf_expected_WWT()
+        E_W = network.E_W
+        E_WWT = network.E_WWT
 
         return self.weight_models[cn1][cn2].\
             expected_log_likelihood((E_W[n1,n2,:],

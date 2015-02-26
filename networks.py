@@ -4,14 +4,16 @@ from abstractions import FixedGaussianNetwork, FactorizedWeightedNetworkDistribu
 from internals.eigenmodel import LogisticEigenmodel
 from internals.weights import GaussianWeights
 
+from internals.stochastic_block_model import GaussianStochasticBlockModel
+
 # Create a weighted version with an independent, Gaussian weight model.
 # The latent embedding has no bearing on the weight distribution.
 class GaussianWeightedEigenmodel(FactorizedWeightedNetworkDistribution, GaussianWeightedNetworkDistribution):
 
     def __init__(self, N, B, D=2,
-                 mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None,
                  p=0.5, sigma_mu0=1.0, sigma_F=1.0,
-                 lmbda=None, mu_lmbda=0, sigma_lmbda=1.0):
+                 lmbda=None, mu_lmbda=0, sigma_lmbda=1.0,
+                 mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None):
 
         super(GaussianWeightedEigenmodel, self).__init__(N, B)
 
@@ -24,21 +26,7 @@ class GaussianWeightedEigenmodel(FactorizedWeightedNetworkDistribution, Gaussian
                                                   sigma_F=sigma_F, lmbda=lmbda,
                                                   mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
-        # Initialize the weight model
-        # Set defaults for weight model parameters
-        if mu_0 is None:
-            mu_0 = np.zeros(B)
-
-        if Sigma_0 is None:
-            Sigma_0 = np.eye(B)
-
-        if nu_0 is None:
-            nu_0 = B + 2
-
-        if kappa_0 is None:
-            kappa_0 = 1.0
-
-        self._weight_dist = GaussianWeights(mu_0=mu_0, kappa_0=kappa_0,
+        self._weight_dist = GaussianWeights(self.B, mu_0=mu_0, kappa_0=kappa_0,
                                             Sigma_0=Sigma_0, nu_0=nu_0)
 
     @property
@@ -117,3 +105,4 @@ class GaussianWeightedEigenmodel(FactorizedWeightedNetworkDistribution, Gaussian
 
     def plot(self, A, ax=None, color='k', F_true=None, lmbda_true=None):
         self.adjacency_dist.plot(A, ax, color, F_true, lmbda_true)
+

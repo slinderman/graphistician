@@ -31,7 +31,6 @@ def demo(seed=None):
     eigenmodel_args = {"D": D, "p": p, "sigma_F": sigma_F, "lmbda": lmbda}
     true_model = GaussianWeightedEigenmodel(N=N, B=B,
                                             **eigenmodel_args)
-                            # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
     # Sample a graph from the eigenmodel
     network = true_model.rvs()
@@ -39,7 +38,6 @@ def demo(seed=None):
     # Make another model to fit the data
     test_model = GaussianWeightedEigenmodel(N=N, B=B,
                                             **eigenmodel_args)
-                            # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
     # Initialize with the true model settings
     # test_model.init_with_gibbs(true_model)
