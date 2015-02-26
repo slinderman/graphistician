@@ -284,7 +284,7 @@ class FactorizedWeightedNetworkDistribution(WeightedNetworkDistribution):
     #     return lp
 
     def rvs(self, size=[]):
-        A = self.adjacency_dist.rvs()
+        A = self.adjacency_dist.rvs(size=(self.N, self.N))
         W = self.weight_dist.rvs(size=(self.N, self.N))
 
         return FixedGaussianNetwork(A,W)
