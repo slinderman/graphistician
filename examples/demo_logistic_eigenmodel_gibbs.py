@@ -28,9 +28,9 @@ def demo(seed=None):
     lmbda       = np.ones(D)
     mu_lmbda    = 1.0     # Mean of the latent feature space metric
     sigma_lmbda = 0.001   # Variance of the latent feature space metric
-    eigenmodel_args = {"p": p, "sigma_F": sigma_F, "lmbda": lmbda}
+    eigenmodel_args = {"D": D, "p": p, "sigma_F": sigma_F, "lmbda": lmbda}
     B = 2       # Dimensionality of the weights
-    true_model = GaussianWeightedEigenmodel(N=N, B=B, D=D,
+    true_model = GaussianWeightedEigenmodel(N=N, B=B,
                                             **eigenmodel_args)
 
     # Sample a graph from the eigenmodel
@@ -45,7 +45,7 @@ def demo(seed=None):
     true_model.plot(network.A, ax=ax_true)
 
     # Make another model to fit the data
-    test_model = GaussianWeightedEigenmodel(N=N, B=B, D=D,
+    test_model = GaussianWeightedEigenmodel(N=N, B=B,
                                             **eigenmodel_args)
 
     # Fit with Gibbs sampling

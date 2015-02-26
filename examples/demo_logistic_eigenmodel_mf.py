@@ -28,8 +28,8 @@ def demo(seed=None):
     lmbda = np.ones(D)
     mu_lmbda    = 1.0    # Mean of the feature space metric
     sigma_lmbda = 0.1    # Variance of the latent feature space metric
-    eigenmodel_args = {"p": p, "sigma_F": sigma_F, "lmbda": lmbda}
-    true_model = GaussianWeightedEigenmodel(N=N, D=D, B=B,
+    eigenmodel_args = {"D": D, "p": p, "sigma_F": sigma_F, "lmbda": lmbda}
+    true_model = GaussianWeightedEigenmodel(N=N, B=B,
                                             **eigenmodel_args)
                             # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
@@ -37,7 +37,7 @@ def demo(seed=None):
     network = true_model.rvs()
 
     # Make another model to fit the data
-    test_model = GaussianWeightedEigenmodel(N=N, D=D, B=B,
+    test_model = GaussianWeightedEigenmodel(N=N, B=B,
                                             **eigenmodel_args)
                             # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 

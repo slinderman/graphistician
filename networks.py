@@ -10,7 +10,8 @@ class GaussianWeightedEigenmodel(FactorizedWeightedNetworkDistribution, Gaussian
 
     def __init__(self, N, B, D=2,
                  mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None,
-                 **eigenmodel_args):
+                 p=0.5, sigma_mu0=1.0, sigma_F=1.0,
+                 lmbda=None, mu_lmbda=0, sigma_lmbda=1.0):
 
         super(GaussianWeightedEigenmodel, self).__init__(N, B)
 
@@ -19,7 +20,9 @@ class GaussianWeightedEigenmodel(FactorizedWeightedNetworkDistribution, Gaussian
         self.D = D      # Dimensionality of latent feature space
 
         # Initialize the graph model
-        self._adjacency_dist = LogisticEigenmodel(N, D, **eigenmodel_args)
+        self._adjacency_dist = LogisticEigenmodel(N, D, p=p, sigma_mu0=sigma_mu0,
+                                                  sigma_F=sigma_F, lmbda=lmbda,
+                                                  mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
         # Initialize the weight model
         # Set defaults for weight model parameters
