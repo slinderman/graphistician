@@ -35,14 +35,14 @@ def demo(seed=None):
 
     # Sample a graph from the eigenmodel
     # import pdb; pdb.set_trace()
-    A,W = true_model.rvs()
+    network = true_model.rvs()
 
     # Make a figure to plot the true and inferred network
     plt.ion()
     fig     = plt.figure()
     ax_true = fig.add_subplot(1,2,1, aspect="equal")
     ax_test = fig.add_subplot(1,2,2, aspect="equal")
-    true_model.plot(A, ax=ax_true)
+    true_model.plot(network.A, ax=ax_true)
 
     # Make another model to fit the data
     test_model = GaussianWeightedEigenmodel(N=N, D=D, B=B,
@@ -53,8 +53,8 @@ def demo(seed=None):
     lps       = []
     for smpl in xrange(N_samples):
         print "Iteration ", smpl
-        test_model.resample((A, W))
-        lps.append(test_model.log_probability((A,W)))
+        test_model.resample(network)
+        lps.append(test_model.log_probability(network))
         print "LP: ", lps[-1]
         print ""
 
@@ -62,7 +62,7 @@ def demo(seed=None):
         # Update the test plot
         if smpl % 20 == 0:
             ax_test.cla()
-            test_model.plot(A, ax=ax_test, color=color, F_true=true_model.F, lmbda_true=true_model.lmbda)
+            test_model.plot(network.A, ax=ax_test, color=color, F_true=true_model.F, lmbda_true=true_model.lmbda)
             plt.pause(0.001)
 
     plt.ioff()

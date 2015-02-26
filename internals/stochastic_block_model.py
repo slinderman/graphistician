@@ -3,18 +3,16 @@ Network models expose a probability of connection and a scale of the weights
 """
 import abc
 import copy
-
 import numpy as np
 from scipy.special import psi
 from scipy.misc import logsumexp
 
 from abstractions import GaussianWeightedNetworkDistribution, NetworkDistribution, \
-    WeightedDirectedNetwork, GaussianWeightedDirectedNetwork
+    WeightedDirectedNetwork
 from deps.pybasicbayes.util.stats import sample_discrete_from_log
-
 from utils.distributions import Bernoulli, Beta, Dirichlet, Discrete
+from internals.weights import GaussianWeights
 
-from weights import GaussianWeights
 
 class _StochasticBlockModelBase(NetworkDistribution):
     """
@@ -135,6 +133,26 @@ class _StochasticBlockModelBase(NetworkDistribution):
     #
     # def log_probability(self):
     #     return self.log_likelihood((self.m, self._p, self.v, self.c))
+
+
+    def invariant_sbm_order(self):
+        """
+        Return an (almost) invariant ordering of the block labels
+        """
+        # Get the counts for each cluster
+        blocksz = np.bincount(self.c, self.C)
+
+        # Sort by size to get new IDs
+        corder = np.argsort(blocksz)
+
+        # Get new block labels, ordered by size
+        newc = np.zeros(self.N)
+        for c in np.arange(self.C):
+            newc[self.c==corder[c]]=c
+
+        # Get a permutation of the nodes to new class labels
+        perm = np.argsort(-newc)
+        return perm
 
 class _GibbsSBM(_StochasticBlockModelBase):
     """
@@ -592,7 +610,3 @@ class GaussianStochasticBlockModel(_GibbsSBM, _MeanFieldSBM, GaussianWeightedNet
                                   self.weight_models[c1][c2].mf_expected_logdet_Sigma()
 
         return E_logdet_Sigma
-
-
-class StochasticBlockModel(_GibbsSBM, _MeanFieldSBM):
-    pass

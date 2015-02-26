@@ -3,6 +3,7 @@ Prior distribution over weight models that can be combined with the graph models
 """
 import numpy as np
 
+from abstractions import GaussianWeightedDirectedNetwork, WeightedDirectedNetwork
 from deps.pybasicbayes.distributions import Gaussian
 
 class GaussianWeights(Gaussian):
@@ -13,9 +14,28 @@ class GaussianWeights(Gaussian):
         super(GaussianWeights, self).__init__(mu_0=mu_0, sigma_0=Sigma_0,
                                               nu_0=nu_0, kappa_0=kappa_0)
 
+    def log_prior(self):
+        # TODO: Compute log prior of Normal-Inverse Wishart
+        return 0
+
+    def resample(self, networks=[]):
+        if isinstance(networks, WeightedDirectedNetwork):
+            networks = [networks]
+
+        if len(networks) > 0:
+            As = [n.A for n in networks]
+            Ws = [n.W for n in networks]
+            Ws = np.vstack([W[A==1,:] for A,W in zip(As,Ws)])
+        else:
+            Ws = []
+
+        # Resample the Normal-inverse Wishart prior over mu and W
+        # given W for which A=1
+        super(GaussianWeights, self).resample(Ws)
+
     # Override the mean field updates to allow downstream components to
     # pass in expected statistics of the data.
-    def meanfieldupdate(self, exp_ss_data, weights=None):
+    def meanfieldupdate(self, network, weights=None):
         """
         Perform mean field update with the expected sufficient statistics of the data
         :param exp_ss_data: a tuple E_x, E_xxT
@@ -24,37 +44,49 @@ class GaussianWeights(Gaussian):
         :param weights:     how much to weight each datapoint's statistics
         :return:
         """
-        E_x, E_xxT = exp_ss_data
-        N = E_x.shape[0]
+        E_W, E_WWT  = network.E_W, network.E_WWT
+
+        N = E_W.shape[0]
         D = self.D
-        assert E_x.shape == (N,D)
-        assert E_xxT.shape == (N,D,D)
+        assert E_W.shape == (N,N,D)
+        assert E_WWT.shape == (N,N,D,D)
 
         if weights is not None:
-            assert weights.shape == (N,)
+            assert weights.shape == (N,N)
         else:
-            weights = np.ones(N)
+            weights = np.ones((N,N))
+
+        # Ravel the weights for the Gaussian distribution object
+        E_W = E_W.reshape((N**2,D))
+        E_WWT = E_WWT.reshape((N**2,D,D))
+        weights = weights.reshape((N**2,))
 
         self.mf_natural_hypparam = \
-                self.natural_hypparam + self._get_weighted_statistics(E_x, E_xxT, weights)
+                self.natural_hypparam + self._get_weighted_statistics(E_W, E_WWT, weights)
 
-    def meanfield_sgdstep(self, exp_ss_data, minibatchfrac, stepsize, weights=None):
+    def meanfield_sgdstep(self, network, minibatchfrac, stepsize, weights=None):
 
-        E_x, E_xxT = exp_ss_data
-        N = E_x.shape[0]
+        E_W, E_WWT  = network.E_W, network.E_WWT
+
+        N = E_W.shape[0]
         D = self.D
-        assert E_x.shape == (N,D)
-        assert E_xxT.shape == (N,D,D)
+        assert E_W.shape == (N,N,D)
+        assert E_WWT.shape == (N,N,D,D)
 
         if weights is not None:
-            assert weights.shape == (N,)
+            assert weights.shape == (N,N)
         else:
-            weights = np.ones(N)
+            weights = np.ones((N,N))
+
+        # Ravel the weights for the Gaussian distribution object
+        E_W = E_W.reshape((N**2,D))
+        E_WWT = E_WWT.reshape((N**2,D,D))
+        weights = weights.reshape((N**2,))
 
         self.mf_natural_hypparam = \
                 (1-stepsize) * self.mf_natural_hypparam + stepsize * (
                         self.natural_hypparam
-                        + 1./minibatchfrac * self._get_weighted_statistics(E_x, E_xxT, weights))
+                        + 1./minibatchfrac * self._get_weighted_statistics(E_W, E_WWT, weights))
 
     def _get_weighted_statistics(self, E_x, E_xxT, weights):
         """
@@ -72,10 +104,11 @@ class GaussianWeights(Gaussian):
         return out
 
     # Expose mean field expectations
-    def expected_log_likelihood(self, x):
+    def expected_log_likelihood(self, network):
         from utils.distributions import Gaussian as G
 
-        E_W, E_WWT = x
+        assert isinstance(network, GaussianWeightedDirectedNetwork)
+        E_W, E_WWT = network.E_W, network.E_WWT
         N = E_W.shape[0]
         assert E_W.shape == (N,N,self.D)
         assert E_WWT.shape == (N,N,self.D,self.D)

@@ -4,7 +4,7 @@ from scipy.special import erf
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 
-from abstractions import AldousHooverNetwork
+from abstractions import DirectedNetwork
 from deps.pybasicbayes.abstractions import GibbsSampling, MeanField
 from utils.utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
 from utils.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian, Bernoulli
@@ -12,7 +12,7 @@ from utils.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussia
 from pypolyagamma import pgdrawv, PyRNG
 
 
-class _EigenmodelBase(AldousHooverNetwork):
+class _EigenmodelBase(object):
     """
     Eigenmodel for random graphs, as defined in Hoff, 2008.
 
@@ -832,18 +832,19 @@ class _GibbsLogisticEigenmodel(_LogisticEigenmodelBase, GibbsSampling):
 
         self.resample()
 
-    def resample(self, data=[]):
+    def resample(self, networks=[]):
         """
         Resample the parameters of the distribution given the observed graphs.
-        :param data:
+        :param networks:
         :return:
         """
-        if not isinstance(data, list):
-            data = [data]
-        As = data
+        if not isinstance(networks, list):
+            networks = [networks]
+        assert all([isinstance(n, DirectedNetwork) for n in networks])
+        As = [network.A for network in networks]
 
         # Sample auxiliary variables for each graph in data
-        Omegas = self._resample_Omega(data)
+        Omegas = self._resample_Omega(As)
 
         # Sample per-node features given Z, mu_0, and lmbda
         self._resample_F(As, Omegas)
@@ -855,14 +856,14 @@ class _GibbsLogisticEigenmodel(_LogisticEigenmodelBase, GibbsSampling):
         if not self.lmbda_given:
             self._resample_lmbda(As, Omegas)
 
-    def _resample_Omega(self, data=[]):
+    def _resample_Omega(self, As=[]):
         """
         Sample auxiliary Polya-gamma variables for each adjacency matrix
-        :param data:
+        :param As:
         :return:
         """
         Omegas = []
-        for A in data:
+        for A in As:
             tmp = np.empty(A.size, dtype=np.float)
             pgdrawv(np.ones(A.size, dtype=np.int32),
                     self.Mu.ravel("C"),
@@ -994,7 +995,7 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         self.mf_mu_F = gibbs_model.F.copy()
         self.mf_Sigma_F = np.tile((1e-4 * np.eye(self.D))[None, :, :], [self.N,1,1])
 
-    def meanfieldupdate(self, E_A):
+    def meanfieldupdate(self, network):
         """
         Mean field is a little different than Gibbs. We have to keep around
         variational parameters for the adjacency matrix. Thus, we assume that
@@ -1006,7 +1007,9 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         :param E_A:     Expected value of the adjacency matrix
         :return:
         """
-        # import pdb; pdb.set_trace()
+        assert isinstance(network, DirectedNetwork)
+        E_A = network.E_A
+
         assert isinstance(E_A, np.ndarray) and E_A.shape == (self.N, self.N) \
                and np.amax(E_A) <= 1.0 and np.amin(E_A) >= 0.0
 
@@ -1127,6 +1130,15 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         Ps = np.clip(Ps, 1e-16, 1-1e-16)
         return np.log(Ps).mean(0), np.log(1-Ps).mean(0)
 
+    def mf_expected_log_notp(self):
+        """
+        Compute the expected log probability of a connection under Z
+        :return:
+        """
+        Ps = logistic(self.mf_sample_mus())
+        Ps = np.clip(Ps, 1e-16, 1-1e-16)
+        return np.log(1-Ps).mean(0)
+
     def mf_expected_mu(self):
         """
         E[mu] = E[mu0 + f^T \Lambda f]
@@ -1200,13 +1212,13 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         std_mu = np.sqrt(self.mf_variance_mu())[None, :, :]
         return E_mu + std_mu * np.random.randn(N_samples, self.N, self.N)
 
-    def expected_log_likelihood(self,x):
+    def expected_log_likelihood(self, network):
         """
         Compute the expected log likelihood of a graph x=A.
         :param x:
         :return:
         """
-        A = x
+        A = network.A
         assert A.shape == (self.N, self.N) and np.all(np.bitwise_or(A==0, A==1))
         E_log_p, E_log_notp = self.mf_expected_log_p()
         return (A * E_log_p + (1-A) * E_log_notp).sum()

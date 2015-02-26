@@ -139,9 +139,50 @@ class NetworkDistribution(object):
 
     __metaclass__ = abc.ABCMeta
 
-    @abc.abstractmethod
-    def log_likelihood(self, networks=[]):
+    def __init__(self, N):
+        self.N = N
+
+    @abc.abstractproperty
+    def adjacency_dist(self):
         raise NotImplementedError()
+
+    @abc.abstractproperty
+    def P(self):
+        """
+        Probability of an edge
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def log_prior(self):
+        raise NotImplementedError()
+
+    def log_likelihood(self, network):
+        """
+        Compute the log likelihood of a given adjacency matrix
+        :param x:
+        :return:
+        """
+        A = network.A
+        assert A.shape == (self.N, self.N)
+
+        P  = self.P
+        ll = A * np.log(P) + (1-A) * np.log(1-P)
+        if not np.all(np.isfinite(ll)):
+            print "P finite? ", np.all(np.isfinite(P))
+            import pdb; pdb.set_trace()
+
+        # The graph may contain NaN's to represent missing data
+        # Set the log likelihood of NaN's to zero
+        ll = np.nan_to_num(ll)
+
+        return ll.sum()
+
+    def log_probability(self, network):
+        lp = 0
+        lp += self.log_prior()
+        lp += self.log_likelihood(network)
+        return lp
 
     @abc.abstractmethod
     def resample(self, networks=[]):
@@ -160,12 +201,115 @@ class NetworkDistribution(object):
     def mf_expected_log_notp(self):
         raise NotImplementedError()
 
-    @abc.abstractmethod
+    def expected_log_likelihood(self, network):
+        ell = 0
+        ell += self.adjacency_dist.expected_log_likelihood(network)
+        return ell
+
     def get_vlb(self):
-        pass
+        vlb = 0
+        vlb  += self.adjacency_dist.get_vlb()
+        return vlb
+
+    def resample_from_mf(self):
+        self.adjacency_dist.resample_from_mf()
 
 
-class GaussianWeightedNetworkDistribution(NetworkDistribution):
+class WeightedNetworkDistribution(NetworkDistribution):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, N, B):
+        super(WeightedNetworkDistribution, self).__init__(N)
+        self.B = B
+
+    @abc.abstractproperty
+    def weight_dist(self):
+        raise NotImplementedError()
+
+    ### Mean field
+    def expected_log_likelihood(self, network):
+        ell = super(WeightedNetworkDistribution, self).expected_log_likelihood()
+        ell += self.weight_dist.expected_log_likelihood(network)
+        return ell
+
+    def get_vlb(self):
+        vlb = super(WeightedNetworkDistribution, self).get_vlb()
+        vlb  += self.adjacency_dist.get_vlb()
+        return vlb
+
+    def resample_from_mf(self):
+        super(WeightedNetworkDistribution, self).resample_from_mf()
+        self.weight_dist.resample_from_mf()
+
+
+class FactorizedWeightedNetworkDistribution(WeightedNetworkDistribution):
+    """
+    Models where p(A,W) = p(A)p(W).
+    """
+    # Extend the basic distribution functions
+    def log_prior(self):
+        lp = 0
+        lp += self.adjacency_dist.log_prior()
+        lp += self.weight_dist.log_prior()
+        return lp
+
+    def log_likelihood(self, network):
+        """
+        Compute the log likelihood of
+        :param x: A,W tuple
+        :return:
+        """
+        # Extract the adjacency matrix and the nonzero weights
+        A, W = network.A, network.W
+        W = W[A>0, :]
+
+        ll  = self.adjacency_dist.log_likelihood(A)
+        ll += self.weight_dist.log_likelihood(W).sum()
+        return ll
+
+    # def log_probability(self, x):
+    #     lp = self.log_prior()
+    #     lp += self.log_likelihood(x)
+    #     return lp
+
+    def rvs(self, size=[]):
+        A = self.adjacency_dist.rvs()
+        W = self.weight_dist.rvs(size=(self.N, self.N))
+
+        return FixedGaussianNetwork(A,W)
+
+    # Extend the Gibbs sampling algorithm
+    def resample(self, networks=[]):
+        """
+        Reample given a list of A's and W's
+        :param data: (list of A's, list of W's)
+        :return:
+        """
+        if isinstance(networks, WeightedDirectedNetwork):
+            networks = [networks]
+
+        self.adjacency_dist.resample(networks)
+        self.weight_dist.resample(networks)
+
+    # Extend the mean field variational inference algorithm
+    def meanfieldupdate(self, network):
+        """
+        Reample given a list of A's and W's
+        :param data: (list of A's, list of W's)
+        :return:
+        """
+        # Mean field update the eigenmodel given As
+        self.adjacency_dist.meanfieldupdate(network)
+
+        # Mean field update the weight model
+        # The "weights" of each W correspond to the probability
+        # of that connection being nonzero. That is, the weights equal E_A.
+        # First, convert E_W and E_WWT to be (N**2, D) and (N**2, D, D), respectively.
+        weights = network.E_A
+        self.weight_dist.meanfieldupdate(network, weights=weights)
+
+
+class GaussianWeightedNetworkDistribution(WeightedNetworkDistribution):
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractproperty
@@ -190,4 +334,30 @@ class GaussianWeightedNetworkDistribution(NetworkDistribution):
 
     @abc.abstractmethod
     def mf_expected_logdet_Sigma(self):
+        raise NotImplementedError()
+
+
+class GammaWeightedNetworkDistribution(WeightedNetworkDistribution):
+    __metaclass__ = abc.ABCMeta
+
+    @abc.abstractproperty
+    def Kappa(self):
+        """
+        Shape of the gamma distributed weights
+        """
+        pass
+
+    @abc.abstractproperty
+    def V(self):
+        """
+        Inverse-Scale of the gamma-distributed weights
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def mf_expected_v(self):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def mf_expected_log_v(self):
         raise NotImplementedError()

@@ -2,9 +2,11 @@
 Demo of an eigenmodel.
 """
 import numpy as np
+
 import matplotlib.pyplot as plt
 
-from eigenmodel import ProbitEigenmodel
+from internals.eigenmodel import ProbitEigenmodel
+
 try:
     from hips.plotting.colormaps import harvard_colors
     color = harvard_colors()[0]

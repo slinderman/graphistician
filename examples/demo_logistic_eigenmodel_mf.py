@@ -37,12 +37,7 @@ def demo(seed=None):
     true_model.lmbda = np.ones((2,))
 
     # Sample a graph from the eigenmodel
-    A,W = true_model.rvs()
-    # Compute W*W.T
-    WWT = np.zeros((N,N,B,B))
-    for n1 in xrange(N):
-        for n2 in xrange(N):
-            WWT[n1,n2,:,:] = np.outer(W[n1,n2,:], W[n1,n2,:])
+    network = true_model.rvs()
 
     # Make another model to fit the data
     test_model = GaussianWeightedEigenmodel(N=N, D=D, B=B,
@@ -57,24 +52,24 @@ def demo(seed=None):
     plt.ion()
     fig     = plt.figure()
     ax_true = fig.add_subplot(1,2,1, aspect="equal")
-    true_model.plot(A, ax=ax_true)
+    true_model.plot(network.A, ax=ax_true)
     ax_test = fig.add_subplot(1,2,2, aspect="equal")
-    test_model.plot(A, ax=ax_test)
+    test_model.plot(network.A, ax=ax_test)
 
     # Fit with mean field variational inference
     N_iters = 100
-    lps     = [test_model.log_probability((A,W))]
-    vlbs    = [test_model.get_vlb() + test_model.expected_log_likelihood(A, W, WWT)]
+    lps     = [test_model.log_probability(network)]
+    vlbs    = [test_model.get_vlb() + test_model.expected_log_likelihood(network)]
     for itr in xrange(N_iters):
         # raw_input("Press enter to continue\n")
         print "Iteration ", itr
-        test_model.meanfieldupdate(A, W, WWT)
-        vlbs.append(test_model.get_vlb() + test_model.expected_log_likelihood(A, W, WWT))
+        test_model.meanfieldupdate(network)
+        vlbs.append(test_model.get_vlb() + test_model.expected_log_likelihood(network))
         # vlbs.append(test_model.get_vlb() )
 
         # Resample from the variational posterior
         test_model.resample_from_mf()
-        lps.append(test_model.log_probability((A,W)))
+        lps.append(test_model.log_probability((network)))
         print "VLB: ", vlbs[-1]
         print "LP:  ", lps[-1]
         print ""
@@ -82,7 +77,7 @@ def demo(seed=None):
         # Update the test plot
         if itr % 20 == 0:
             ax_test.cla()
-            test_model.plot(A, ax=ax_test, color=color, F_true=true_model.F, lmbda_true=true_model.lmbda)
+            test_model.plot(network.A, ax=ax_test, color=color, F_true=true_model.F, lmbda_true=true_model.lmbda)
             plt.pause(0.001)
 
     # Analyze the VLBs
@@ -112,8 +107,8 @@ def demo(seed=None):
                  yerr=np.sqrt(np.diag(test_model.Sigma_w)),
                  color=color)
 
-    plt.errorbar(np.arange(B), true_model.weight_model.mf_expected_mu(),
-                 yerr=np.sqrt(np.diag(true_model.weight_model.mf_expected_Sigma())),
+    plt.errorbar(np.arange(B), true_model._weight_dist.mf_expected_mu(),
+                 yerr=np.sqrt(np.diag(true_model._weight_dist.mf_expected_Sigma())),
                  color='k')
 
     plt.xlim(-1, B+1)

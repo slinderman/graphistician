@@ -1,8 +1,11 @@
-from graph_models import *
-import matplotlib.pyplot as plt
 import scipy
 import scipy.special
 import numpy as np
+
+import matplotlib.pyplot as plt
+
+from internals.graph_models import *
+
 
 def sample_er():
     """

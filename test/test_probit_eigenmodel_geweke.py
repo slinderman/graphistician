@@ -2,11 +2,12 @@
 Geweke test for the Eigenmodel Gibbs sampling algorithm.
 """
 import numpy as np
-import matplotlib.pyplot as plt
-
 from scipy.stats import norm, probplot
 
-from eigenmodel import Eigenmodel
+import matplotlib.pyplot as plt
+
+from internals.eigenmodel import Eigenmodel
+
 
 def demo(seed=None):
     if seed is None:

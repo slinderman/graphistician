@@ -1,22 +1,25 @@
 import numpy as np
 
-from eigenmodel import LogisticEigenmodel
-from weights import GaussianWeights
+from abstractions import FixedGaussianNetwork, FactorizedWeightedNetworkDistribution, GaussianWeightedNetworkDistribution
+from internals.eigenmodel import LogisticEigenmodel
+from internals.weights import GaussianWeights
 
 # Create a weighted version with an independent, Gaussian weight model.
 # The latent embedding has no bearing on the weight distribution.
-class GaussianWeightedEigenmodel():
+class GaussianWeightedEigenmodel(FactorizedWeightedNetworkDistribution, GaussianWeightedNetworkDistribution):
 
     def __init__(self, N, D, B,
                  mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None,
                  eigenmodel_args={}):
+
+        super(GaussianWeightedEigenmodel, self).__init__(N, B)
 
         self.N = N      # Number of nodes
         self.D = D      # Dimensionality of latent feature space
         self.B = B      # Dimensionality of weights
 
         # Initialize the graph model
-        self.graph_model = LogisticEigenmodel(N, D, **eigenmodel_args)
+        self._adjacency_dist = LogisticEigenmodel(N, D, **eigenmodel_args)
 
         # Initialize the weight model
         # Set defaults for weight model parameters
@@ -32,126 +35,82 @@ class GaussianWeightedEigenmodel():
         if kappa_0 is None:
             kappa_0 = 1.0
 
-        self.weight_model = GaussianWeights(mu_0=mu_0, kappa_0=kappa_0,
+        self._weight_dist = GaussianWeights(mu_0=mu_0, kappa_0=kappa_0,
                                             Sigma_0=Sigma_0, nu_0=nu_0)
+
+    @property
+    def adjacency_dist(self):
+        return self._adjacency_dist
+
+    @property
+    def weight_dist(self):
+        return self._weight_dist
 
     # Expose latent variables of the eigenmodel
     @property
     def F(self):
-        return self.graph_model.F
+        return self.adjacency_dist.F
+
+    @property
+    def P(self):
+        return self.adjacency_dist.P
+
+    @property
+    def Mu(self):
+        """
+        Get the NxNxB array of mean weights
+        :return:
+        """
+        return np.tile(self._model.weight_model.mu[None, None, :],
+                       [self.N, self.N, 1])
+
+    @property
+    def Sigma(self):
+        """
+        Get the NxNxBxB array of weight covariances
+        :return:
+        """
+        return np.tile(self._model.weight_model.sigma[None, None, :, :],
+                       [self.N, self.N, 1, 1])
 
     @property
     def mu_0(self):
-        return self.graph_model.mu_0
+        return self.adjacency_dist.mu_0
 
     @property
     def lmbda(self):
-        return self.graph_model.lmbda
+        return self.adjacency_dist.lmbda
 
     @property
     def mu_w(self):
-        return self.weight_model.mu
+        return self.weight_dist.mu
 
     @property
     def Sigma_w(self):
-        return self.weight_model.sigma
-
-    # Extend the basic distribution functions
-    def log_prior(self):
-        # TODO: Compute the log prior probability for the Normal-Inverse Wishart prior
-        return self.graph_model.log_prior()
-
-    def log_likelihood(self, x):
-        """
-        Compute the log likelihood of
-        :param x: A,W tuple
-        :return:
-        """
-        # Extract the adjacency matrix and the nonzero weights
-        A,W = x
-        W = W[A>0, :]
-
-        ll  = self.graph_model.log_likelihood(A)
-        ll += self.weight_model.log_likelihood(W).sum()
-        return ll
-
-    def log_probability(self, x):
-        lp = self.log_prior()
-        lp += self.log_likelihood(x)
-        return lp
-
-    def rvs(self, size=[]):
-        A = self.graph_model.rvs()
-        W = self.weight_model.rvs(size=(self.N, self.N))
-        return A, W
-
-    # Extend the Gibbs sampling algorithm
-    def resample(self, data=[]):
-        """
-        Reample given a list of A's and W's
-        :param data: (list of A's, list of W's)
-        :return:
-        """
-        A, W = data[0], data[1]
-
-        # Resample the eigenmodel given A
-        self.graph_model.resample(A)
-
-        # Resample the weight model given W for which A=1
-        W = W[A>0, :]
-        self.weight_model.resample(W)
-
-    # Extend the mean field variational inference algorithm
-    def meanfieldupdate(self, E_A, E_W, E_WWT):
-        """
-        Reample given a list of A's and W's
-        :param data: (list of A's, list of W's)
-        :return:
-        """
-        # Mean field update the eigenmodel given As
-        self.graph_model.meanfieldupdate(E_A)
-
-        # Mean field update the weight model
-        # The "weights" of each W correspond to the probability
-        # of that connection being nonzero. That is, the weights equal E_A.
-        # First, convert E_W and E_WWT to be (N**2, D) and (N**2, D, D), respectively.
-        exp_ss_data = [E_W.reshape((self.N**2, self.D)),
-                       E_WWT.reshape((self.N**2, self.D, self.D))]
-        weights = E_A.reshape((self.N**2,))
-        self.weight_model.meanfieldupdate(exp_ss_data=exp_ss_data, weights=weights)
+        return self.weight_dist.sigma
 
     # Expose network level expectations
+    def mf_expected_log_p(self):
+        return self.adjacency_dist.mf_expected_log_p()
+
+    def mf_expected_log_notp(self):
+        return self.adjacency_dist.mf_expected_log_notp()
+
     def mf_expected_mu(self):
-        E_mu = self.weight_model.mf_expected_mu()
+        E_mu = self.weight_dist.mf_expected_mu()
         return np.tile(E_mu[None, None, :], [self.N, self.N, 1])
 
     def mf_expected_mumuT(self):
-        E_mumuT = self.weight_model.mf_expected_mumuT()
+        E_mumuT = self.weight_dist.mf_expected_mumuT()
         return np.tile(E_mumuT[None, None, :, :], [self.N, self.N, 1, 1])
 
     def mf_expected_Sigma_inv(self):
-        E_Sigma_inv = self.weight_model.mf_expected_Sigma_inv()
+        E_Sigma_inv = self.weight_dist.mf_expected_Sigma_inv()
         return np.tile(E_Sigma_inv[None, None, :, :], [self.N, self.N, 1, 1])
 
     def mf_expected_logdet_Sigma(self):
-        E_logdet_Sigma = self.weight_model.mf_expected_logdet_Sigma()
+        E_logdet_Sigma = self.weight_dist.mf_expected_logdet_Sigma()
         return E_logdet_Sigma * np.ones((self.N, self.N))
 
-    def expected_log_likelihood(self, E_A, E_W, E_WWT):
-        ell = 0
-        ell += self.graph_model.expected_log_likelihood(E_A)
-        ell += self.weight_model.expected_log_likelihood((E_W, E_WWT))
-        return ell
-
-    def get_vlb(self):
-        vlb = 0
-        vlb  += self.graph_model.get_vlb()
-        vlb += self.weight_model.get_vlb()
-        return vlb
-
-    def resample_from_mf(self):
-        self.graph_model.resample_from_mf()
-        self.weight_model.resample_from_mf()
-
     def plot(self, A, ax=None, color='k', F_true=None, lmbda_true=None):
-        self.graph_model.plot(A, ax, color, F_true, lmbda_true)
+        self.adjacency_dist.plot(A, ax, color, F_true, lmbda_true)

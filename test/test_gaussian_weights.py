@@ -1,5 +1,7 @@
 import numpy as np
-from weights import GaussianWeights
+
+from internals.weights import GaussianWeights
+
 
 def test_mf_expectations():
     """

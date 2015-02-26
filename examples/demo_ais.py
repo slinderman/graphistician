@@ -1,13 +1,11 @@
 # Run as script using 'python -m test.synth'
 import sys
-
-import numpy as np
 from scipy.misc import logsumexp
-import matplotlib.pyplot as plt
-import brewer2mpl
 
-from graph_models import *
-from utils import *
+import matplotlib.pyplot as plt
+
+from internals.graph_models import *
+
 
 def estimate_marginal_likelihood(A, f0, theta0, model,
                                  N_samples=1000, B=100, steps_per_B=11):
