@@ -228,7 +228,7 @@ class WeightedNetworkDistribution(NetworkDistribution):
 
     ### Mean field
     def expected_log_likelihood(self, network):
-        ell = super(WeightedNetworkDistribution, self).expected_log_likelihood()
+        ell = super(WeightedNetworkDistribution, self).expected_log_likelihood(network)
         ell += self.weight_dist.expected_log_likelihood(network)
         return ell
 

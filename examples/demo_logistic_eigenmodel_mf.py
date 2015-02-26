@@ -33,9 +33,6 @@ def demo(seed=None):
                                             eigenmodel_args=eigenmodel_args)
                             # mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
 
-    # Override the latent feature metric
-    true_model.lmbda = np.ones((2,))
-
     # Sample a graph from the eigenmodel
     network = true_model.rvs()
 
