@@ -61,7 +61,7 @@ class GaussianWeightedEigenmodel(FactorizedWeightedNetworkDistribution, Gaussian
         Get the NxNxB array of mean weights
         :return:
         """
-        return np.tile(self._model.weight_model.mu[None, None, :],
+        return np.tile(self.weight_dist.mu[None, None, :],
                        [self.N, self.N, 1])
 
     @property
@@ -70,7 +70,7 @@ class GaussianWeightedEigenmodel(FactorizedWeightedNetworkDistribution, Gaussian
         Get the NxNxBxB array of weight covariances
         :return:
         """
-        return np.tile(self._model.weight_model.sigma[None, None, :, :],
+        return np.tile(self.weight_dist.sigma[None, None, :, :],
                        [self.N, self.N, 1, 1])
 
     @property
