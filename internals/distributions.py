@@ -1,6 +1,6 @@
 import numpy as np
 
-from internals.utils import normal_cdf, normal_pdf
+from utils import normal_cdf, normal_pdf
 
 
 class Discrete(object):
