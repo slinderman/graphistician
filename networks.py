@@ -8,15 +8,15 @@ from internals.weights import GaussianWeights
 # The latent embedding has no bearing on the weight distribution.
 class GaussianWeightedEigenmodel(FactorizedWeightedNetworkDistribution, GaussianWeightedNetworkDistribution):
 
-    def __init__(self, N, D, B,
+    def __init__(self, N, B, D=2,
                  mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None,
-                 eigenmodel_args={}):
+                 **eigenmodel_args):
 
         super(GaussianWeightedEigenmodel, self).__init__(N, B)
 
         self.N = N      # Number of nodes
-        self.D = D      # Dimensionality of latent feature space
         self.B = B      # Dimensionality of weights
+        self.D = D      # Dimensionality of latent feature space
 
         # Initialize the graph model
         self._adjacency_dist = LogisticEigenmodel(N, D, **eigenmodel_args)

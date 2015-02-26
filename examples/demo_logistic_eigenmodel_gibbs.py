@@ -30,8 +30,8 @@ def demo(seed=None):
     sigma_lmbda = 0.001   # Variance of the latent feature space metric
     eigenmodel_args = {"p": p, "sigma_F": sigma_F, "lmbda": lmbda}
     B = 2       # Dimensionality of the weights
-    true_model = GaussianWeightedEigenmodel(N=N, D=D, B=B,
-                                            eigenmodel_args=eigenmodel_args)
+    true_model = GaussianWeightedEigenmodel(N=N, B=B, D=D,
+                                            **eigenmodel_args)
 
     # Sample a graph from the eigenmodel
     # import pdb; pdb.set_trace()
@@ -45,8 +45,8 @@ def demo(seed=None):
     true_model.plot(network.A, ax=ax_true)
 
     # Make another model to fit the data
-    test_model = GaussianWeightedEigenmodel(N=N, D=D, B=B,
-                                            eigenmodel_args=eigenmodel_args)
+    test_model = GaussianWeightedEigenmodel(N=N, B=B, D=D,
+                                            **eigenmodel_args)
 
     # Fit with Gibbs sampling
     N_samples = 1000
