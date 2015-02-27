@@ -5,6 +5,57 @@ import numpy as np
 
 from deps.pybasicbayes.distributions import Gaussian
 
+class GaussianFixedWeights(Gaussian):
+    def __init__(self, B, mu, Sigma):
+        self.B = B
+
+        assert mu.shape == (B,)
+        self.mu = mu
+
+        assert Sigma.shape == (B,B)
+        self.Sigma = Sigma
+
+        # Precompute
+        self.mumuT = np.outer(mu, mu)
+        self.Sigma_inv = np.linalg.inv(Sigma)
+        self.logdet_Sigma = np.linalg.slogdet(Sigma)[1]
+
+        super(GaussianFixedWeights, self).__init__(mu, Sigma)
+
+    def log_prior(self):
+        return 0
+
+    def resample(self, edges):
+        pass
+
+    def meanfieldupdate(self, As, weights=None):
+        pass
+
+    def mf_expected_mu(self):
+        return self.mu
+
+    def mf_expected_Sigma(self):
+        return self.Sigma
+
+    def mf_expected_mumuT(self):
+        return self.mumuT
+
+    def mf_expected_Sigma_inv(self):
+        return self.Sigma_inv
+
+    def mf_expected_logdet_Sigma(self):
+        return self.logdet_Sigma
+
+    def expected_log_likelihood(self, x):
+        return self.log_likelihood(x)
+
+    def get_vlb(self):
+        return 0
+
+    def resample_from_mf(self):
+        pass
+
+
 class GaussianWeights(Gaussian):
     """
     Gaussian weight distribution.

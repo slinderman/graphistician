@@ -339,7 +339,8 @@ class _MeanFieldSBM(_StochasticBlockModelBase):
         for c1 in xrange(self.C):
             for c2 in xrange(self.C):
                 pc1c2 = self.mf_m[:,c1][:,None] * self.mf_m[:,c2][None, :]
-                self.weight_models[c1][c2].meanfieldupdate(network, weights=pc1c2)
+                mf_weights = network.E_A * pc1c2
+                self.weight_models[c1][c2].meanfieldupdate(network, weights=mf_weights)
 
     def meanfield_sgdstep(self, network, minibatchfrac, stepsize):
         # Update the remaining SBM parameters
