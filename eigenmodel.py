@@ -1128,7 +1128,7 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         """
         Ps = logistic(self.mf_sample_mus())
         Ps = np.clip(Ps, 1e-16, 1-1e-16)
-        return np.log(Ps).mean(0), np.log(1-Ps).mean(0)
+        return np.log(Ps).mean(0)
 
     def mf_expected_log_notp(self):
         """
@@ -1220,7 +1220,8 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         """
         A = network.A
         assert A.shape == (self.N, self.N) and np.all(np.bitwise_or(A==0, A==1))
-        E_log_p, E_log_notp = self.mf_expected_log_p()
+        E_log_p = self.mf_expected_log_p()
+        E_log_notp = self.mf_expected_log_notp()
         return (A * E_log_p + (1-A) * E_log_notp).sum()
 
     def get_vlb(self):
