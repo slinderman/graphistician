@@ -48,6 +48,9 @@ class BernoulliEdges(Distribution):
     def resample_from_mf(self):
         pass
 
+    def svi_step(self, network, minibatchfrac, stepsize, weights=None):
+        pass
+
 
 class BetaBernoulliEdges(Distribution):
     def __init__(self, tau1, tau0):

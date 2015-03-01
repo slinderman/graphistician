@@ -219,6 +219,10 @@ class NetworkDistribution(object):
     def resample_from_mf(self):
         raise NotImplementedError()
 
+    ### Stochastic variational inference
+    def svi_step(self, network, minibatchfrac, stepsize):
+        raise NotImplementedError()
+
 
 class WeightedNetworkDistribution(NetworkDistribution):
     __metaclass__ = abc.ABCMeta
@@ -333,6 +337,22 @@ class FactorizedWeightedNetworkDistribution(WeightedNetworkDistribution):
     def resample_from_mf(self):
         self.adjacency_dist.resample_from_mf()
         self.weight_dist.resample_from_mf()
+
+    def svi_step(self, network, minibatchfrac, stepsize):
+        # Mean field update the eigenmodel given As
+        self.adjacency_dist.svi_step(network,
+                                     minibatchfrac=minibatchfrac,
+                                     stepsize=stepsize)
+
+        # Mean field update the weight model
+        # The "weights" of each W correspond to the probability
+        # of that connection being nonzero. That is, the weights equal E_A.
+        # First, convert E_W and E_WWT to be (N**2, D) and (N**2, D, D), respectively.
+        weights = network.E_A
+        self.weight_dist.svi_step(network,
+                                  weights=weights,
+                                  minibatchfrac=minibatchfrac,
+                                  stepsize=stepsize)
 
 
 class GaussianWeightedNetworkDistribution(WeightedNetworkDistribution):

@@ -1023,6 +1023,36 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         if not self.lmbda_given:
             self._meanfieldupdate_lmbda(E_A, E_O)
 
+    def svi_step(self, network, minibatchfrac, stepsize):
+        """
+        Mean field is a little different than Gibbs. We have to keep around
+        variational parameters for the adjacency matrix. Thus, we assume that
+        meanfieldupdate is always called with the same, single adjacency matrix.
+
+        Update the mean field variational parameters given the expected
+        adjacency matrix, E[A=1].
+
+        :param E_A:     Expected value of the adjacency matrix
+        :return:
+        """
+        E_A = network.E_A
+
+        assert isinstance(E_A, np.ndarray) and E_A.shape == (self.N, self.N) \
+               and np.amax(E_A) <= 1.0 and np.amin(E_A) >= 0.0
+
+        # Compute the expectation of Omega under
+        # the variational posterior. These are not saved
+        # from iteration to iteration, so we don't really do
+        # a stochastic gradient update on them.
+        E_O = self._meanfieldupdate_Omega()
+
+        # Update the latent Z's for the adjacency matrix
+        self._meanfieldupdate_mu0(E_A, E_O, stepsize=stepsize)
+        self._meanfieldupdate_F(E_A, E_O)
+
+        if not self.lmbda_given:
+            self._meanfieldupdate_lmbda(E_A, E_O)
+
     def _meanfieldupdate_Omega(self):
         """
         Compute the expectation of omega under the variational posterior.
@@ -1034,7 +1064,7 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
                   * (np.tanh(Zs/2.0) / (Zs)).mean(axis=0)
         return E_Omega
 
-    def _meanfieldupdate_mu0(self, E_A, E_O):
+    def _meanfieldupdate_mu0(self, E_A, E_O, stepsize=1.0):
         """
         Sample mu_0 from its Gaussian posterior
         """
@@ -1053,10 +1083,12 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         post_mean_dot_prec += (self.kappa(E_A) - E_O * E_FdotF).sum()
 
         # Set the variational posterior parameters
-        self.mf_sigma_mu0 = 1.0 / post_prec
-        self.mf_mu_mu0    = self.mf_sigma_mu0 * post_mean_dot_prec
+        self.mf_sigma_mu0 = (1-stepsize) * self.mf_sigma_mu0 + \
+                            stepsize * 1.0 / post_prec
+        self.mf_mu_mu0    = (1-stepsize) * self.mf_mu_mu0 + \
+                            stepsize * self.mf_sigma_mu0 * post_mean_dot_prec
 
-    def _meanfieldupdate_F(self, E_A, E_O):
+    def _meanfieldupdate_F(self, E_A, E_O, stepsize=1.0):
         """
         Update the latent features.
         """
@@ -1084,13 +1116,15 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
                 post_mean_dot_prec += E_O[nn,n] * zcent[nn,n] * self.F[nn,:] * E_lmbda
 
             # Set the variational posterior parameters
-            self.mf_Sigma_F[n,:,:] = np.linalg.inv(post_prec)
-            self.mf_mu_F[n,:]      = self.mf_Sigma_F[n,:,:].dot(post_mean_dot_prec)
+            self.mf_Sigma_F[n,:,:] = (1-stepsize) * self.self.mf_Sigma_F[n,:,:] + \
+                                     stepsize * np.linalg.inv(post_prec)
+            self.mf_mu_F[n,:]      = (1-stepsize) * self.self.mf_mu_F[n,:] + \
+                                     stepsize * self.mf_Sigma_F[n,:,:].dot(post_mean_dot_prec)
 
         assert np.all(np.isfinite(self.mf_mu_F))
         assert np.all(np.isfinite(self.mf_Sigma_F))
 
-    def _meanfieldupdate_lmbda(self, E_A, E_O):
+    def _meanfieldupdate_lmbda(self, E_A, E_O, stepsize=1.0):
         """
         Mean field update for the latent feature space metric
         """
@@ -1118,8 +1152,10 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
                 post_mean_dot_prec += E_O[n2,n1] * zcent[n2,n1] * E_f1f2
 
         # Compute the posterior mean and covariance
-        self.mf_Sigma_lmbda = np.linalg.inv(post_prec)
-        self.mf_mu_lmbda    = self.mf_Sigma_lmbda.dot(post_mean_dot_prec)
+        self.mf_Sigma_lmbda = (1.0-stepsize) * self.mf_Sigma_lmbda +\
+                              stepsize * np.linalg.inv(post_prec)
+        self.mf_mu_lmbda    = (1.0-stepsize) * self.mf_mu_lmbda + \
+                              stepsize * self.mf_Sigma_lmbda.dot(post_mean_dot_prec)
 
     def mf_expected_log_p(self):
         """

@@ -55,6 +55,9 @@ class GaussianFixedWeights(Gaussian):
     def resample_from_mf(self):
         pass
 
+    def svi_step(self, network, minibatchfrac, stepsize, weights=None):
+        pass
+
 
 class GaussianWeights(Gaussian):
     """
@@ -128,7 +131,7 @@ class GaussianWeights(Gaussian):
         self.mf_natural_hypparam = \
                 self.natural_hypparam + self._get_weighted_statistics(E_W, E_WWT, weights)
 
-    def meanfield_sgdstep(self, network, minibatchfrac, stepsize, weights=None):
+    def svi_step(self, network, minibatchfrac, stepsize, weights=None):
 
         E_W, E_WWT  = network.E_W, network.E_WWT
 
