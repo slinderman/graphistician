@@ -1116,9 +1116,9 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
                 post_mean_dot_prec += E_O[nn,n] * zcent[nn,n] * self.F[nn,:] * E_lmbda
 
             # Set the variational posterior parameters
-            self.mf_Sigma_F[n,:,:] = (1-stepsize) * self.self.mf_Sigma_F[n,:,:] + \
+            self.mf_Sigma_F[n,:,:] = (1-stepsize) * self.mf_Sigma_F[n,:,:] + \
                                      stepsize * np.linalg.inv(post_prec)
-            self.mf_mu_F[n,:]      = (1-stepsize) * self.self.mf_mu_F[n,:] + \
+            self.mf_mu_F[n,:]      = (1-stepsize) * self.mf_mu_F[n,:] + \
                                      stepsize * self.mf_Sigma_F[n,:,:].dot(post_mean_dot_prec)
 
         assert np.all(np.isfinite(self.mf_mu_F))
