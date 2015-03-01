@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 from abstractions import FactorizedWeightedNetworkDistribution, \
     GaussianWeightedNetworkDistribution
-from internals.deps.pybasicbayes.abstractions import GibbsSampling, MeanField
+from pybasicbayes.abstractions import GibbsSampling, MeanField
 from internals.utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
 from internals.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian
 from internals.weights import GaussianWeights

@@ -3,7 +3,7 @@ Prior distribution over weight models that can be combined with the graph models
 """
 import numpy as np
 
-from deps.pybasicbayes.distributions import Gaussian
+from pybasicbayes.distributions import Gaussian
 
 class GaussianFixedWeights(Gaussian):
     def __init__(self, B, mu, Sigma):

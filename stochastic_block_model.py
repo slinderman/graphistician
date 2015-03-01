@@ -9,7 +9,7 @@ from scipy.misc import logsumexp
 
 from abstractions import GaussianWeightedNetworkDistribution, NetworkDistribution, \
     WeightedDirectedNetwork, FixedGaussianNetwork
-from internals.deps.pybasicbayes.util.stats import sample_discrete_from_log
+from pybasicbayes.util.stats import sample_discrete_from_log
 from internals.distributions import Bernoulli, Beta, Dirichlet, Discrete
 from internals.weights import GaussianWeights
 

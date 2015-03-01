@@ -5,7 +5,7 @@ with fixed probability or a beta-Bernoulli model.
 import numpy as np
 from scipy.special import psi
 
-from deps.pybasicbayes.distributions import Distribution
+from pybasicbayes.distributions import Distribution
 
 class BernoulliEdges(Distribution):
     """
