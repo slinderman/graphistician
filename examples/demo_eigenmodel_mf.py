@@ -74,7 +74,7 @@ def demo(seed=None):
         # Update the test plot
         if itr % 20 == 0:
             ax_test.cla()
-            test_model.plot(A, ax=ax_test, color=color, F_true=true_model.F, lmbda_true=true_model.lmbda)
+            test_model.plot(A, ax=ax_test, color=color, L_true=true_model.F, lmbda_true=true_model.lmbda)
             plt.pause(0.001)
 
     # Analyze the VLBs
