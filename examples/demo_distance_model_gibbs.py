@@ -4,7 +4,8 @@ Demo of an eigenmodel.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from distance_model import DistanceModel
+from graphistician.distance_model import DistanceModel
+
 
 try:
     from hips.plotting.colormaps import harvard_colors

@@ -1,10 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from abstractions import FactorizedWeightedNetworkDistribution, \
+from graphistician.abstractions import FactorizedWeightedNetworkDistribution, \
     GaussianWeightedNetworkDistribution
-from internals.weights import GaussianWeights
-from internals.adjacency import BernoulliEdges
+from graphistician.internals.weights import GaussianWeights
+from graphistician.internals.adjacency import BernoulliEdges
+
+
 
 # Define an Erdos-Renyi model
 class GaussianErdosRenyiFixedSparsity(FactorizedWeightedNetworkDistribution,

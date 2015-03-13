@@ -4,7 +4,8 @@ Demo of an eigenmodel.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from networks import GaussianWeightedEigenmodel
+from graphistician.networks import GaussianWeightedEigenmodel
+
 try:
     from hips.plotting.colormaps import harvard_colors
     color = harvard_colors()[0]

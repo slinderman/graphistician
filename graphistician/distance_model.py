@@ -4,13 +4,12 @@ of connection is a function of distance in latent space.
 """
 import numpy as np
 import matplotlib.pyplot as plt
-
 from funkyyak import grad
 from hips.inference.hmc import hmc
 
-from abstractions import GaussianWeightedNetworkDistribution
-from internals.weights import GaussianWeights
-from internals.utils import logistic
+from graphistician.abstractions import GaussianWeightedNetworkDistribution
+from graphistician.internals.weights import GaussianWeights
+from graphistician.internals.utils import logistic
 
 
 class DistanceModel(object):

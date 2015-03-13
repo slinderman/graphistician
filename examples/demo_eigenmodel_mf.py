@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from graphistician.eigenmodel import ProbitEigenmodel
+
 try:
     from hips.plotting.colormaps import harvard_colors
     color = harvard_colors()[0]

@@ -1,6 +1,6 @@
 import numpy as np
 
-from internals.weights import GaussianWeights
+from graphistician.internals.weights import GaussianWeights
 
 
 def test_mf_expectations():

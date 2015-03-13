@@ -5,7 +5,7 @@ import numpy as np
 from scipy.stats import norm, probplot
 import matplotlib.pyplot as plt
 
-from eigenmodel import LogisticEigenmodel
+from graphistician.eigenmodel import LogisticEigenmodel
 
 
 def demo(seed=None):

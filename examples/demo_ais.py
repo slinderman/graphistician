@@ -1,10 +1,10 @@
 # Run as script using 'python -m test.synth'
 import sys
-from scipy.misc import logsumexp
 
+from scipy.misc import logsumexp
 import matplotlib.pyplot as plt
 
-from internals.graph_models import *
+from graphistician.internals.graph_models import *
 
 
 def estimate_marginal_likelihood(A, f0, theta0, model,

@@ -4,7 +4,8 @@ Demo of an eigenmodel.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from networks import GaussianErdosRenyiFixedSparsity
+from graphistician.networks import GaussianErdosRenyiFixedSparsity
+
 
 try:
     from hips.plotting.colormaps import harvard_colors

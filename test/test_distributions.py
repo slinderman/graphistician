@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.stats import truncnorm, norm
 
-from internals.distributions import TruncatedScalarGaussian, ScalarGaussian
+from graphistician.internals.distributions import TruncatedScalarGaussian, ScalarGaussian
 from internals.utils import normal_cdf
 
 

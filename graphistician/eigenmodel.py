@@ -1,17 +1,17 @@
 import abc
+
 import numpy as np
 from scipy.special import erf
 from scipy.stats import norm
-from pypolyagamma import pgdrawv, PyRNG
-
 import matplotlib.pyplot as plt
-
-from abstractions import FactorizedWeightedNetworkDistribution, \
-    GaussianWeightedNetworkDistribution
 from pybasicbayes.abstractions import GibbsSampling, MeanField
-from internals.utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
-from internals.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian
-from internals.weights import GaussianWeights
+
+from pypolyagamma import pgdrawv, PyRNG
+from graphistician.abstractions import FactorizedWeightedNetworkDistribution, \
+    GaussianWeightedNetworkDistribution
+from graphistician.internals.utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
+from graphistician.internals.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian
+from graphistician.internals.weights import GaussianWeights
 
 
 class _EigenmodelBase(object):

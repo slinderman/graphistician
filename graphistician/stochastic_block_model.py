@@ -3,15 +3,16 @@ Network models expose a probability of connection and a scale of the weights
 """
 import abc
 import copy
+
 import numpy as np
 from scipy.special import psi
 from scipy.misc import logsumexp
-
-from abstractions import GaussianWeightedNetworkDistribution, NetworkDistribution, \
-    WeightedDirectedNetwork, FixedGaussianNetwork
 from pybasicbayes.util.stats import sample_discrete_from_log
-from internals.distributions import Bernoulli, Beta, Dirichlet, Discrete
-from internals.weights import GaussianWeights
+
+from graphistician.abstractions import GaussianWeightedNetworkDistribution, NetworkDistribution, \
+    WeightedDirectedNetwork, FixedGaussianNetwork
+from graphistician.internals.distributions import Bernoulli, Beta, Dirichlet, Discrete
+from graphistician.internals.weights import GaussianWeights
 
 
 class _StochasticBlockModelBase(NetworkDistribution):
