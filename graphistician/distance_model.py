@@ -324,7 +324,6 @@ class GaussianDistanceModel(GaussianWeightedNetworkDistribution):
     def svi_step(self, network, minibatchfrac, stepsize):
         raise NotImplementedError()
 
-
     # Expose network level expectations
     def mf_expected_log_p(self):
         return self.adjacency_dist.mf_expected_log_p()
