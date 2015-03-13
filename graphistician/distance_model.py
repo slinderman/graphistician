@@ -245,6 +245,29 @@ class GaussianDistanceModel(GaussianWeightedNetworkDistribution):
     def weight_dist(self):
         return self._weight_dist
 
+    @property
+    def P(self):
+        return self.adjacency_dist.P
+
+    @property
+    def Mu(self):
+        """
+        Get the NxNxB array of mean weights
+        :return:
+        """
+        return np.tile(self.weight_dist.mu[None, None, :],
+                       [self.N, self.N, 1])
+
+    @property
+    def Sigma(self):
+        """
+        Get the NxNxBxB array of weight covariances
+        :return:
+        """
+        return np.tile(self.weight_dist.sigma[None, None, :, :],
+                       [self.N, self.N, 1, 1])
+
+
     # Extend the basic distribution functions
     def log_prior(self):
         lp = 0
@@ -280,7 +303,9 @@ class GaussianDistanceModel(GaussianWeightedNetworkDistribution):
         :return:
         """
         self.adjacency_dist.resample(network.A)
-        self.weight_dist.resample(network.W)
+
+        # TODO: resample given just W
+        self.weight_dist.resample(network)
 
     # Extend the mean field variational inference algorithm
     def meanfieldupdate(self, network):
@@ -298,3 +323,30 @@ class GaussianDistanceModel(GaussianWeightedNetworkDistribution):
 
     def svi_step(self, network, minibatchfrac, stepsize):
         raise NotImplementedError()
+
+
+    # Expose network level expectations
+    def mf_expected_log_p(self):
+        return self.adjacency_dist.mf_expected_log_p()
+
+    def mf_expected_log_notp(self):
+        return self.adjacency_dist.mf_expected_log_notp()
+
+    def mf_expected_mu(self):
+        E_mu = self.weight_dist.mf_expected_mu()
+        return np.tile(E_mu[None, None, :], [self.N, self.N, 1])
+
+    def mf_expected_mumuT(self):
+        E_mumuT = self.weight_dist.mf_expected_mumuT()
+        return np.tile(E_mumuT[None, None, :, :], [self.N, self.N, 1, 1])
+
+    def mf_expected_Sigma_inv(self):
+        E_Sigma_inv = self.weight_dist.mf_expected_Sigma_inv()
+        return np.tile(E_Sigma_inv[None, None, :, :], [self.N, self.N, 1, 1])
+
+    def mf_expected_logdet_Sigma(self):
+        E_logdet_Sigma = self.weight_dist.mf_expected_logdet_Sigma()
+        return E_logdet_Sigma * np.ones((self.N, self.N))
+
+    def plot(self, A, ax=None, color='k', F_true=None, lmbda_true=None):
+        self.adjacency_dist.plot(A, ax, color, F_true, lmbda_true)
