@@ -139,13 +139,6 @@ class NetworkDistribution(object):
 
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, N):
-        self.N = N
-
-    @abc.abstractproperty
-    def adjacency_dist(self):
-        raise NotImplementedError()
-
     @abc.abstractproperty
     def P(self):
         """
@@ -200,52 +193,74 @@ class NetworkDistribution(object):
     @abc.abstractmethod
     def mf_expected_log_notp(self):
         raise NotImplementedError()
+    #
+    # def expected_log_likelihood(self, network):
+    #     ell = 0
+    #     ell += self.adjacency_dist.expected_log_likelihood(network)
+    #     return ell
+    #
+    # def get_vlb(self):
+    #     vlb = 0
+    #     vlb  += self.adjacency_dist.get_vlb()
+    #     return vlb
+    #
+    # def resample_from_mf(self):
+    #     self.adjacency_dist.resample_from_mf()
 
+    @abc.abstractmethod
     def expected_log_likelihood(self, network):
-        ell = 0
-        ell += self.adjacency_dist.expected_log_likelihood(network)
-        return ell
+        raise NotImplementedError()
 
+    @abc.abstractmethod
     def get_vlb(self):
-        vlb = 0
-        vlb  += self.adjacency_dist.get_vlb()
-        return vlb
+        raise NotImplementedError()
 
+    @abc.abstractmethod
     def resample_from_mf(self):
-        self.adjacency_dist.resample_from_mf()
+        raise NotImplementedError()
+
+    ### Stochastic variational inference
+    def svi_step(self, network, minibatchfrac, stepsize):
+        raise NotImplementedError()
 
 
 class WeightedNetworkDistribution(NetworkDistribution):
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, N, B):
-        super(WeightedNetworkDistribution, self).__init__(N)
-        self.B = B
-
-    @abc.abstractproperty
-    def weight_dist(self):
-        raise NotImplementedError()
-
-    ### Mean field
-    def expected_log_likelihood(self, network):
-        ell = super(WeightedNetworkDistribution, self).expected_log_likelihood(network)
-        ell += self.weight_dist.expected_log_likelihood(network)
-        return ell
-
-    def get_vlb(self):
-        vlb = super(WeightedNetworkDistribution, self).get_vlb()
-        vlb  += self.adjacency_dist.get_vlb()
-        return vlb
-
-    def resample_from_mf(self):
-        super(WeightedNetworkDistribution, self).resample_from_mf()
-        self.weight_dist.resample_from_mf()
+    #
+    # ### Mean field
+    # def expected_log_likelihood(self, network):
+    #     ell = super(WeightedNetworkDistribution, self).expected_log_likelihood(network)
+    #     ell += self.weight_dist.expected_log_likelihood(network)
+    #     return ell
+    #
+    # def get_vlb(self):
+    #     vlb = super(WeightedNetworkDistribution, self).get_vlb()
+    #     vlb  += self.adjacency_dist.get_vlb()
+    #     return vlb
+    #
+    # def resample_from_mf(self):
+    #     super(WeightedNetworkDistribution, self).resample_from_mf()
+    #     self.weight_dist.resample_from_mf()
 
 
 class FactorizedWeightedNetworkDistribution(WeightedNetworkDistribution):
     """
     Models where p(A,W) = p(A)p(W).
     """
+
+    def __init__(self, N, B):
+        self.N = N
+        self.B = B
+
+    @abc.abstractproperty
+    def adjacency_dist(self):
+        raise NotImplementedError()
+
+    @abc.abstractproperty
+    def weight_dist(self):
+        raise NotImplementedError()
+
     # Extend the basic distribution functions
     def log_prior(self):
         lp = 0
@@ -273,7 +288,7 @@ class FactorizedWeightedNetworkDistribution(WeightedNetworkDistribution):
     #     return lp
 
     def rvs(self, size=[]):
-        A = self.adjacency_dist.rvs()
+        A = self.adjacency_dist.rvs(size=(self.N, self.N))
         W = self.weight_dist.rvs(size=(self.N, self.N))
 
         return FixedGaussianNetwork(A,W)
@@ -307,6 +322,37 @@ class FactorizedWeightedNetworkDistribution(WeightedNetworkDistribution):
         # First, convert E_W and E_WWT to be (N**2, D) and (N**2, D, D), respectively.
         weights = network.E_A
         self.weight_dist.meanfieldupdate(network, weights=weights)
+
+    ### Mean field
+    def expected_log_likelihood(self, network):
+        ell = self.adjacency_dist.expected_log_likelihood(network)
+        ell += self.weight_dist.expected_log_likelihood(network)
+        return ell
+
+    def get_vlb(self):
+        vlb = self.adjacency_dist.get_vlb()
+        vlb  += self.adjacency_dist.get_vlb()
+        return vlb
+
+    def resample_from_mf(self):
+        self.adjacency_dist.resample_from_mf()
+        self.weight_dist.resample_from_mf()
+
+    def svi_step(self, network, minibatchfrac, stepsize):
+        # Mean field update the eigenmodel given As
+        self.adjacency_dist.svi_step(network,
+                                     minibatchfrac=minibatchfrac,
+                                     stepsize=stepsize)
+
+        # Mean field update the weight model
+        # The "weights" of each W correspond to the probability
+        # of that connection being nonzero. That is, the weights equal E_A.
+        # First, convert E_W and E_WWT to be (N**2, D) and (N**2, D, D), respectively.
+        weights = network.E_A
+        self.weight_dist.svi_step(network,
+                                  weights=weights,
+                                  minibatchfrac=minibatchfrac,
+                                  stepsize=stepsize)
 
 
 class GaussianWeightedNetworkDistribution(WeightedNetworkDistribution):

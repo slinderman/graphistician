@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.special import gammaln, psi
 
 from utils import normal_cdf, normal_pdf
 

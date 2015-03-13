@@ -6,9 +6,12 @@ from pypolyagamma import pgdrawv, PyRNG
 
 import matplotlib.pyplot as plt
 
-from deps.pybasicbayes.abstractions import GibbsSampling, MeanField
-from utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
-from distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian
+from abstractions import FactorizedWeightedNetworkDistribution, \
+    GaussianWeightedNetworkDistribution
+from pybasicbayes.abstractions import GibbsSampling, MeanField
+from internals.utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
+from internals.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian
+from internals.weights import GaussianWeights
 
 
 class _EigenmodelBase(object):
@@ -1020,6 +1023,36 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         if not self.lmbda_given:
             self._meanfieldupdate_lmbda(E_A, E_O)
 
+    def svi_step(self, network, minibatchfrac, stepsize):
+        """
+        Mean field is a little different than Gibbs. We have to keep around
+        variational parameters for the adjacency matrix. Thus, we assume that
+        meanfieldupdate is always called with the same, single adjacency matrix.
+
+        Update the mean field variational parameters given the expected
+        adjacency matrix, E[A=1].
+
+        :param E_A:     Expected value of the adjacency matrix
+        :return:
+        """
+        E_A = network.E_A
+
+        assert isinstance(E_A, np.ndarray) and E_A.shape == (self.N, self.N) \
+               and np.amax(E_A) <= 1.0 and np.amin(E_A) >= 0.0
+
+        # Compute the expectation of Omega under
+        # the variational posterior. These are not saved
+        # from iteration to iteration, so we don't really do
+        # a stochastic gradient update on them.
+        E_O = self._meanfieldupdate_Omega()
+
+        # Update the latent Z's for the adjacency matrix
+        self._meanfieldupdate_mu0(E_A, E_O, stepsize=stepsize)
+        self._meanfieldupdate_F(E_A, E_O)
+
+        if not self.lmbda_given:
+            self._meanfieldupdate_lmbda(E_A, E_O)
+
     def _meanfieldupdate_Omega(self):
         """
         Compute the expectation of omega under the variational posterior.
@@ -1031,7 +1064,7 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
                   * (np.tanh(Zs/2.0) / (Zs)).mean(axis=0)
         return E_Omega
 
-    def _meanfieldupdate_mu0(self, E_A, E_O):
+    def _meanfieldupdate_mu0(self, E_A, E_O, stepsize=1.0):
         """
         Sample mu_0 from its Gaussian posterior
         """
@@ -1050,10 +1083,12 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         post_mean_dot_prec += (self.kappa(E_A) - E_O * E_FdotF).sum()
 
         # Set the variational posterior parameters
-        self.mf_sigma_mu0 = 1.0 / post_prec
-        self.mf_mu_mu0    = self.mf_sigma_mu0 * post_mean_dot_prec
+        self.mf_sigma_mu0 = (1-stepsize) * self.mf_sigma_mu0 + \
+                            stepsize * 1.0 / post_prec
+        self.mf_mu_mu0    = (1-stepsize) * self.mf_mu_mu0 + \
+                            stepsize * self.mf_sigma_mu0 * post_mean_dot_prec
 
-    def _meanfieldupdate_F(self, E_A, E_O):
+    def _meanfieldupdate_F(self, E_A, E_O, stepsize=1.0):
         """
         Update the latent features.
         """
@@ -1081,13 +1116,15 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
                 post_mean_dot_prec += E_O[nn,n] * zcent[nn,n] * self.F[nn,:] * E_lmbda
 
             # Set the variational posterior parameters
-            self.mf_Sigma_F[n,:,:] = np.linalg.inv(post_prec)
-            self.mf_mu_F[n,:]      = self.mf_Sigma_F[n,:,:].dot(post_mean_dot_prec)
+            self.mf_Sigma_F[n,:,:] = (1-stepsize) * self.mf_Sigma_F[n,:,:] + \
+                                     stepsize * np.linalg.inv(post_prec)
+            self.mf_mu_F[n,:]      = (1-stepsize) * self.mf_mu_F[n,:] + \
+                                     stepsize * self.mf_Sigma_F[n,:,:].dot(post_mean_dot_prec)
 
         assert np.all(np.isfinite(self.mf_mu_F))
         assert np.all(np.isfinite(self.mf_Sigma_F))
 
-    def _meanfieldupdate_lmbda(self, E_A, E_O):
+    def _meanfieldupdate_lmbda(self, E_A, E_O, stepsize=1.0):
         """
         Mean field update for the latent feature space metric
         """
@@ -1115,8 +1152,10 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
                 post_mean_dot_prec += E_O[n2,n1] * zcent[n2,n1] * E_f1f2
 
         # Compute the posterior mean and covariance
-        self.mf_Sigma_lmbda = np.linalg.inv(post_prec)
-        self.mf_mu_lmbda    = self.mf_Sigma_lmbda.dot(post_mean_dot_prec)
+        self.mf_Sigma_lmbda = (1.0-stepsize) * self.mf_Sigma_lmbda +\
+                              stepsize * np.linalg.inv(post_prec)
+        self.mf_mu_lmbda    = (1.0-stepsize) * self.mf_mu_lmbda + \
+                              stepsize * self.mf_Sigma_lmbda.dot(post_mean_dot_prec)
 
     def mf_expected_log_p(self):
         """
@@ -1125,7 +1164,7 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         """
         Ps = logistic(self.mf_sample_mus())
         Ps = np.clip(Ps, 1e-16, 1-1e-16)
-        return np.log(Ps).mean(0), np.log(1-Ps).mean(0)
+        return np.log(Ps).mean(0)
 
     def mf_expected_log_notp(self):
         """
@@ -1217,7 +1256,8 @@ class _MeanFieldLogisticEigenModel(_LogisticEigenmodelBase, MeanField):
         """
         A = network.A
         assert A.shape == (self.N, self.N) and np.all(np.bitwise_or(A==0, A==1))
-        E_log_p, E_log_notp = self.mf_expected_log_p()
+        E_log_p = self.mf_expected_log_p()
+        E_log_notp = self.mf_expected_log_notp()
         return (A * E_log_p + (1-A) * E_log_notp).sum()
 
     def get_vlb(self):
@@ -1275,6 +1315,104 @@ class LogisticEigenmodel(_GibbsLogisticEigenmodel, _MeanFieldLogisticEigenModel)
     pass
 
 
-# Set the default Eigenmodel
-# Eigenmodel = ProbitEigenmodel
-Eigenmodel = LogisticEigenmodel
+# Create a weighted version with an independent, Gaussian weight model.
+# The latent embedding has no bearing on the weight distribution.
+class GaussianWeightedEigenmodel(FactorizedWeightedNetworkDistribution,
+                                 GaussianWeightedNetworkDistribution):
+
+    def __init__(self, N, B, D=2,
+                 p=0.5, sigma_mu0=1.0, sigma_F=1.0,
+                 lmbda=None, mu_lmbda=0, sigma_lmbda=1.0,
+                 mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None):
+
+        super(GaussianWeightedEigenmodel, self).__init__(N, B)
+
+        self.N = N      # Number of nodes
+        self.B = B      # Dimensionality of weights
+        self.D = D      # Dimensionality of latent feature space
+
+        # Initialize the graph model
+        self._adjacency_dist = LogisticEigenmodel(N, D, p=p, sigma_mu0=sigma_mu0,
+                                                  sigma_F=sigma_F, lmbda=lmbda,
+                                                  mu_lmbda=mu_lmbda, sigma_lmbda=sigma_lmbda)
+
+        self._weight_dist = GaussianWeights(self.B, mu_0=mu_0, kappa_0=kappa_0,
+                                            Sigma_0=Sigma_0, nu_0=nu_0)
+
+    @property
+    def adjacency_dist(self):
+        return self._adjacency_dist
+
+    @property
+    def weight_dist(self):
+        return self._weight_dist
+
+    # Expose latent variables of the eigenmodel
+    @property
+    def F(self):
+        return self.adjacency_dist.F
+
+    @property
+    def P(self):
+        return self.adjacency_dist.P
+
+    @property
+    def Mu(self):
+        """
+        Get the NxNxB array of mean weights
+        :return:
+        """
+        return np.tile(self.weight_dist.mu[None, None, :],
+                       [self.N, self.N, 1])
+
+    @property
+    def Sigma(self):
+        """
+        Get the NxNxBxB array of weight covariances
+        :return:
+        """
+        return np.tile(self.weight_dist.sigma[None, None, :, :],
+                       [self.N, self.N, 1, 1])
+
+    @property
+    def mu_0(self):
+        return self.adjacency_dist.mu_0
+
+    @property
+    def lmbda(self):
+        return self.adjacency_dist.lmbda
+
+    @property
+    def mu_w(self):
+        return self.weight_dist.mu
+
+    @property
+    def Sigma_w(self):
+        return self.weight_dist.sigma
+
+    # Expose network level expectations
+    def mf_expected_log_p(self):
+        return self.adjacency_dist.mf_expected_log_p()
+
+    def mf_expected_log_notp(self):
+        return self.adjacency_dist.mf_expected_log_notp()
+
+    def mf_expected_mu(self):
+        E_mu = self.weight_dist.mf_expected_mu()
+        return np.tile(E_mu[None, None, :], [self.N, self.N, 1])
+
+    def mf_expected_mumuT(self):
+        E_mumuT = self.weight_dist.mf_expected_mumuT()
+        return np.tile(E_mumuT[None, None, :, :], [self.N, self.N, 1, 1])
+
+    def mf_expected_Sigma_inv(self):
+        E_Sigma_inv = self.weight_dist.mf_expected_Sigma_inv()
+        return np.tile(E_Sigma_inv[None, None, :, :], [self.N, self.N, 1, 1])
+
+    def mf_expected_logdet_Sigma(self):
+        E_logdet_Sigma = self.weight_dist.mf_expected_logdet_Sigma()
+        return E_logdet_Sigma * np.ones((self.N, self.N))
+
+    def plot(self, A, ax=None, color='k', F_true=None, lmbda_true=None):
+        self.adjacency_dist.plot(A, ax, color, F_true, lmbda_true)
+

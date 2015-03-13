@@ -3,10 +3,9 @@ Geweke test for the Eigenmodel Gibbs sampling algorithm.
 """
 import numpy as np
 from scipy.stats import norm, probplot
-
 import matplotlib.pyplot as plt
 
-from internals.eigenmodel import Eigenmodel
+from eigenmodel import Eigenmodel
 
 
 def demo(seed=None):

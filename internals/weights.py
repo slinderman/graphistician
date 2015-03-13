@@ -3,13 +3,81 @@ Prior distribution over weight models that can be combined with the graph models
 """
 import numpy as np
 
-from deps.pybasicbayes.distributions import Gaussian
+from pybasicbayes.distributions import Gaussian
+
+class GaussianFixedWeights(Gaussian):
+    def __init__(self, B, mu, Sigma):
+        self.B = B
+
+        assert mu.shape == (B,)
+        self.mu = mu
+
+        assert Sigma.shape == (B,B)
+        self.Sigma = Sigma
+
+        # Precompute
+        self.mumuT = np.outer(mu, mu)
+        self.Sigma_inv = np.linalg.inv(Sigma)
+        self.logdet_Sigma = np.linalg.slogdet(Sigma)[1]
+
+        super(GaussianFixedWeights, self).__init__(mu, Sigma)
+
+    def log_prior(self):
+        return 0
+
+    def resample(self, edges):
+        pass
+
+    def meanfieldupdate(self, As, weights=None):
+        pass
+
+    def mf_expected_mu(self):
+        return self.mu
+
+    def mf_expected_Sigma(self):
+        return self.Sigma
+
+    def mf_expected_mumuT(self):
+        return self.mumuT
+
+    def mf_expected_Sigma_inv(self):
+        return self.Sigma_inv
+
+    def mf_expected_logdet_Sigma(self):
+        return self.logdet_Sigma
+
+    def expected_log_likelihood(self, x):
+        return self.log_likelihood(x)
+
+    def get_vlb(self):
+        return 0
+
+    def resample_from_mf(self):
+        pass
+
+    def svi_step(self, network, minibatchfrac, stepsize, weights=None):
+        pass
+
 
 class GaussianWeights(Gaussian):
     """
     Gaussian weight distribution.
     """
-    def __init__(self, mu_0, Sigma_0, nu_0, kappa_0):
+    def __init__(self, B, mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None):
+        # Initialize the weight model
+        # Set defaults for weight model parameters
+        if mu_0 is None:
+            mu_0 = np.zeros(B)
+
+        if Sigma_0 is None:
+            Sigma_0 = np.eye(B)
+
+        if nu_0 is None:
+            nu_0 = B + 2
+
+        if kappa_0 is None:
+            kappa_0 = 1.0
+
         super(GaussianWeights, self).__init__(mu_0=mu_0, sigma_0=Sigma_0,
                                               nu_0=nu_0, kappa_0=kappa_0)
 
@@ -63,7 +131,7 @@ class GaussianWeights(Gaussian):
         self.mf_natural_hypparam = \
                 self.natural_hypparam + self._get_weighted_statistics(E_W, E_WWT, weights)
 
-    def meanfield_sgdstep(self, network, minibatchfrac, stepsize, weights=None):
+    def svi_step(self, network, minibatchfrac, stepsize, weights=None):
 
         E_W, E_WWT  = network.E_W, network.E_WWT
 
