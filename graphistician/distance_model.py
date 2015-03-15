@@ -4,11 +4,11 @@ of connection is a function of distance in latent space.
 """
 import numpy as np
 import matplotlib.pyplot as plt
-from funkyyak import grad
+from autograd import grad
 from hips.inference.hmc import hmc
 
 from graphistician.abstractions import GaussianWeightedNetworkDistribution
-from graphistician.internals.weights import GaussianWeights
+from graphistician.internals.weights import GaussianWeights, GaussianFixedWeights
 from graphistician.internals.utils import logistic
 
 
@@ -349,3 +349,22 @@ class GaussianDistanceModel(GaussianWeightedNetworkDistribution):
 
     def plot(self, A, ax=None, color='k', F_true=None, lmbda_true=None):
         self.adjacency_dist.plot(A, ax, color, F_true, lmbda_true)
+
+
+
+class FixedGaussianDistanceModel(GaussianDistanceModel):
+    def __init__(self, N, B, D=2, sigma=1.0, mu0=0.0,
+                 mu_W=None, Sigma_W=None):
+        self.N = N      # Number of nodes
+        self.B = B      # Dimensionality of weights
+        self.D = D      # Dimensionality of latent feature space
+
+        # Initialize the graph model
+        self._adjacency_dist = DistanceModel(N, D, sigma=sigma, mu0=mu0)
+
+        if mu_W is None:
+            mu_W = np.zeros(B)
+        if Sigma_W is None:
+            Sigma_W = np.eye(B)
+
+        self._weight_dist = GaussianFixedWeights(self.B, mu=mu_W, Sigma=Sigma_W)
