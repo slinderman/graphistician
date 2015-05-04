@@ -4,7 +4,7 @@ Demo of an eigenmodel.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from graphistician.networks import GaussianWeightedEigenmodel
+from graphistician import GaussianWeightedEigenmodel
 
 
 try:

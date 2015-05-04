@@ -4,7 +4,7 @@ Demo of an eigenmodel.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from graphistician.networks import GaussianStochasticBlockModel
+from graphistician import GaussianStochasticBlockModel
 
 
 try:
@@ -22,8 +22,8 @@ def demo(seed=None):
     np.random.seed(seed)
 
     # Create an eigenmodel with N nodes and D-dimensional feature vectors
-    N = 10      # Number of nodes
-    C = 2       # Dimensionality of the feature space
+    N = 50      # Number of nodes
+    C = 5       # Dimensionality of the feature space
     sbm_args = {"C": C}
     B = 2       # Dimensionality of the weights
     true_model = GaussianStochasticBlockModel(N, B, **sbm_args)

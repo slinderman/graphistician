@@ -6,7 +6,7 @@ from scipy.stats import norm
 import matplotlib.pyplot as plt
 from pybasicbayes.abstractions import GibbsSampling, MeanField
 
-from pypolyagamma import pgdrawv, PyRNG
+from pypolyagamma import PyPolyaGamma, get_omp_num_threads, pgdrawvpar
 from graphistician.abstractions import FactorizedWeightedNetworkDistribution, \
     GaussianWeightedNetworkDistribution
 from graphistician.internals.utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
@@ -826,7 +826,9 @@ class _GibbsLogisticEigenmodel(_LogisticEigenmodelBase, GibbsSampling):
     def __init__(self, N, D, **kwargs):
         super(_GibbsLogisticEigenmodel, self).__init__(N, D, **kwargs)
 
-        self.rng = PyRNG()
+        nthreads = get_omp_num_threads()
+        seeds = np.random.randint(0, 2**16, size=nthreads)
+        self.ppgs = [PyPolyaGamma(seed) for seed in seeds]
 
         # DEBUG:
         self.F = np.sqrt(self.sigma_F) * np.random.randn(self.N, self.D)
@@ -866,10 +868,10 @@ class _GibbsLogisticEigenmodel(_LogisticEigenmodelBase, GibbsSampling):
         Omegas = []
         for A in As:
             tmp = np.empty(A.size, dtype=np.float)
-            pgdrawv(np.ones(A.size, dtype=np.int32),
-                    self.Mu.ravel("C"),
-                    tmp,
-                    self.rng)
+            pgdrawvpar(self.ppgs,
+                       np.ones(A.size, dtype=np.int32),
+                       self.Mu.ravel("C"),
+                       tmp)
             Omega = tmp.reshape((self.N, self.N), order="C")
             Omegas.append(Omega)
         return Omegas
