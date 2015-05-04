@@ -17,12 +17,14 @@ class DistanceModel(object):
     f_n ~ N(0, sigma^2 I)
     A_{n', n} ~ Bern(\sigma(-||f_{n'} - f_{n}||_2^2))
     """
-    def __init__(self, N, D, sigma=1.0, mu0=0.0):
+    def __init__(self, N, D, sigma=1.0, mu0=0.0,
+                 allow_self_connections=True):
         self.N = N
         self.D = D
         self.sigma = sigma
         self.mu0 = mu0
         self.L = np.sqrt(self.sigma) * np.random.randn(N,D)
+        self.allow_self_connections = allow_self_connections
 
     @property
     def Mu(self):
@@ -32,6 +34,11 @@ class DistanceModel(object):
 
     @property
     def P(self):
+        P = logistic(self.Mu)
+
+        if not self.allow_self_connections:
+            np.fill_diagonal(P, 1e-32)
+
         return logistic(self.Mu)
 
     def log_prior(self):
@@ -226,13 +233,15 @@ class DistanceModel(object):
 
 class GaussianDistanceModel(GaussianWeightedNetworkDistribution):
     def __init__(self, N, B, D=2, sigma=1.0, mu0=0.0,
-                 mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None):
+                 mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None,
+                 allow_self_connections=True):
         self.N = N      # Number of nodes
         self.B = B      # Dimensionality of weights
         self.D = D      # Dimensionality of latent feature space
 
         # Initialize the graph model
-        self._adjacency_dist = DistanceModel(N, D, sigma=sigma, mu0=mu0)
+        self._adjacency_dist = DistanceModel(N, D, sigma=sigma, mu0=mu0,
+                                             allow_self_connections=allow_self_connections)
 
         self._weight_dist = GaussianWeights(self.B, mu_0=mu_0, kappa_0=kappa_0,
                                             Sigma_0=Sigma_0, nu_0=nu_0)
@@ -244,6 +253,10 @@ class GaussianDistanceModel(GaussianWeightedNetworkDistribution):
     @property
     def weight_dist(self):
         return self._weight_dist
+
+    @property
+    def allow_self_connections(self):
+        return self._adjacency_dist.allow_self_connections
 
     @property
     def P(self):

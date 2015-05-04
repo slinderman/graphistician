@@ -597,13 +597,17 @@ class GaussianStochasticBlockModel(_GibbsSBM, _MeanFieldSBM, GaussianWeightedNet
         Get the NxNxB array of mean weights
         :return:
         """
-        Mu = np.zeros((self.N, self.N, self.B))
-        for n1 in xrange(self.N):
-            c1 = self.c[n1]
-            for n2 in xrange(self.N):
-                c2 = self.c[n2]
-                Mu[n1,n2,:] = self.weight_models[c1][c2].mu
-        return Mu
+        if hasattr(self, "_Mu"):
+            return self._Mu
+        else:
+            Mu = np.zeros((self.N, self.N, self.B))
+            for n1 in xrange(self.N):
+                c1 = self.c[n1]
+                for n2 in xrange(self.N):
+                    c2 = self.c[n2]
+                    Mu[n1,n2,:] = self.weight_models[c1][c2].mu
+            self._Mu = Mu
+        return self._Mu
 
     @property
     def Sigma(self):
@@ -611,13 +615,17 @@ class GaussianStochasticBlockModel(_GibbsSBM, _MeanFieldSBM, GaussianWeightedNet
         Get the NxNxB array of mean weights
         :return:
         """
-        S = np.zeros((self.N, self.N, self.B))
-        for n1 in xrange(self.N):
-            c1 = self.c[n1]
-            for n2 in xrange(self.N):
-                c2 = self.c[n2]
-                S[n1,n2,:,:] = self.weight_models[c1][c2].sigma
-        return S
+        if hasattr(self, "_Sigma"):
+            return self._Sigma
+        else:
+            S = np.zeros((self.N, self.N, self.B, self.B))
+            for n1 in xrange(self.N):
+                c1 = self.c[n1]
+                for n2 in xrange(self.N):
+                    c2 = self.c[n2]
+                    S[n1,n2,:,:] = self.weight_models[c1][c2].sigma
+            self._Sigma = S
+        return self._Sigma
 
     # Mean field likelihood for updates
     def _expected_log_likelihood_W(self, network, n1, cn1, n2, cn2):
