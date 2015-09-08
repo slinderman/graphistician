@@ -3,12 +3,12 @@ Super simple adjacency models. We either have a Bernoulli model
 with fixed probability or a beta-Bernoulli model.
 """
 import numpy as np
-
 from abstractions import AdjacencyDistribution
-
 from internals.utils import logistic
 
-class BernoulliAdjacencyDistribution(AdjacencyDistribution):
+from pybasicbayes.abstractions import GibbsSampling
+
+class BernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     """
     Bernoulli edge model with fixed probability
     """
@@ -26,11 +26,11 @@ class BernoulliAdjacencyDistribution(AdjacencyDistribution):
     def log_prior(self):
         return 0
 
-    def resample(self, edges):
+    def resample(self, data=[]):
         pass
 
 
-class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution):
+class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     def __init__(self, N, tau1, tau0):
         super(BetaBernoulliAdjacencyDistribution, self).__init__(N)
         assert tau1 > 0 and tau0 > 0
@@ -62,7 +62,7 @@ class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution):
         self.p = np.random.beta(tau1, tau0)
 
 
-class LatentDistanceAdjacencyDistribution(object):
+class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     """
     l_n ~ N(0, sigma^2 I)
     A_{n', n} ~ Bern(\sigma(-||l_{n'} - l_{n}||_2^2))
@@ -89,7 +89,7 @@ class LatentDistanceAdjacencyDistribution(object):
         if not self.allow_self_connections:
             np.fill_diagonal(P, 1e-32)
 
-        return logistic(self.D)
+        return P
 
     def log_prior(self):
         """
@@ -101,30 +101,6 @@ class LatentDistanceAdjacencyDistribution(object):
         lp += -0.5 * (self.L * self.L / self.sigma).sum()
         return lp
 
-    def log_likelihood(self, x):
-        """
-        Compute the log likelihood of a given adjacency matrix
-        :param x:
-        :return:
-        """
-        A = x
-        assert A.shape == (self.N, self.N)
-
-        P  = self.P
-        ll = A * np.log(P) + (1-A) * np.log(1-P)
-        if not np.all(np.isfinite(ll)):
-            print "P finite? ", np.all(np.isfinite(P))
-            import pdb; pdb.set_trace()
-
-        # The graph may contain NaN's to represent missing data
-        # Set the log likelihood of NaN's to zero
-        ll = np.nan_to_num(ll)
-
-        return ll.sum()
-
-    def log_probability(self, A):
-        return self.log_likelihood(A) + self.log_prior()
-
     def _hmc_log_probability(self, L, mu0, A):
         """
         Compute the log probability as a function of L.
@@ -133,23 +109,23 @@ class LatentDistanceAdjacencyDistribution(object):
         :param A:
         :return:
         """
+        import autograd.numpy as anp
         # Compute pairwise distance
-        L1 = np.reshape(L,(self.N,1,self.D))
-        L2 = np.reshape(L,(1,self.N,self.D))
-        D = - np.sum((L1-L2)**2, axis=2)
+        L1 = anp.reshape(L,(self.N,1,self.dim))
+        L2 = anp.reshape(L,(1,self.N,self.dim))
+        D = - anp.sum((L1-L2)**2, axis=2)
 
         # Compute the logit probability
         logit_P = mu0 + D
 
         # Take the logistic of the negative distance
-        # P = 1.0 / (1+np.exp(logit_P))
-        P = logistic(logit_P)
+        P = 1.0 / (1+anp.exp(-logit_P))
 
         # Compute the log likelihood
-        ll = np.sum(A * np.log(P) + (1-A) * np.log(1-P))
+        ll = anp.sum(A * anp.log(P) + (1-A) * anp.log(1-P))
 
         # Log prior of L under spherical Gaussian prior
-        lp = -0.5 * np.sum(L * L / self.sigma)
+        lp = -0.5 * anp.sum(L * L / self.sigma)
 
         # Log prior of mu0 under standardGaussian prior
         lp += -0.5 * self.mu0**2
@@ -206,7 +182,7 @@ class LatentDistanceAdjacencyDistribution(object):
 
         import matplotlib.pyplot as plt
 
-        assert self.D==2, "Can only plot for D==2"
+        assert self.dim==2, "Can only plot for D==2"
 
         if ax is None:
             fig = plt.figure()
@@ -292,7 +268,7 @@ class LatentDistanceAdjacencyDistribution(object):
 
 
 
-class SBMAdjacencyDistribution(AdjacencyDistribution):
+class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     """
     A stochastic block model is a clustered network model with
     K:          Number of nodes in the network

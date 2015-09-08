@@ -22,8 +22,8 @@ class NetworkDistribution(Distribution):
         """
         return np.nan
 
-    def log_posterior(self, networks):
-        return self.log_likelihood(networks) + self.log_prior()
+    def log_probability(self, (A,W)):
+        return self.log_likelihood((A,W)) + self.log_prior()
     
     def rvs(self, *args, **kwargs):
         super(NetworkDistribution, self).rvs(*args, **kwargs)
@@ -79,22 +79,12 @@ class WeightDistribution(Distribution):
     def __init__(self, N):
         self.N = N
 
-
-class NullWeightDistribution(WeightDistribution):
-    """
-    Dummy class for unweighted networks
-    """
-    def log_likelihood(self, (A,W)):
-        return 0
-
-    def rvs(self,size=[]):
-        return None
-
-
 class GaussianWeightDistribution(WeightDistribution):
     """
     Base class for Guassian weight matrices.
     """
+    __metaclass__ = abc.ABCMeta
+
     def __init__(self, N, B=1):
         super(GaussianWeightDistribution, self).__init__(N)
         self.B = B
@@ -143,34 +133,3 @@ class GaussianWeightDistribution(WeightDistribution):
 
         return W
 
-
-class FactorizedNetworkDistribution(NetworkDistribution):
-    def __init__(self, N,
-                 adjacency_class, adjacency_kwargs,
-                 weight_class, weight_kwargs):
-
-        super(FactorizedNetworkDistribution, self).__init__()
-        assert issubclass(adjacency_class, AdjacencyDistribution)
-        self.adjacency = adjacency_class(N, **adjacency_kwargs)
-        assert issubclass(weight_class, WeightDistribution)
-        self.weights = weight_class(N, **weight_kwargs)
-
-    def log_likelihood(self, networks):
-        if isinstance(networks, list):
-            lls = []
-            for A,W in networks:
-                ll = self.adjacency.log_likelihood(A)
-                ll += self.weights.log_likelihood((A,W))
-                lls.append(ll)
-
-        else:
-            A,W = networks
-            lls = self.adjacency.log_likelihood(A)
-            lls += self.weights.log_likelihood((A,W))
-
-        return lls
-
-    def rvs(self, *args, **kwargs):
-        A = self.adjacency.rvs()
-        W = self.weights.rvs()
-        return A,W

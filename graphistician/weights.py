@@ -1,12 +1,30 @@
 
 import numpy as np
 
-from abstractions import WeightDistribution
 from pybasicbayes.distributions import Gaussian
+from pybasicbayes.abstractions import GibbsSampling
 
-class GaussianWeightDistribution(WeightDistribution):
+from abstractions import WeightDistribution, GaussianWeightDistribution
+
+class NullWeightDistribution(WeightDistribution, GibbsSampling):
+    """
+    Dummy class for unweighted networks
+    """
+    def log_likelihood(self, (A,W)):
+        return 0
+
+    def log_prior(self):
+        return 0
+
+    def rvs(self,size=[]):
+        return None
+
+    def resample(self,data=[]):
+        pass
+
+class FixedGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     def __init__(self, N, B, mu, sigma):
-        super(GaussianWeightDistribution, self).__init__(N)
+        super(FixedGaussianWeightDistribution, self).__init__(N)
         self.B = B
 
         assert mu.shape == (B,)
@@ -32,7 +50,7 @@ class GaussianWeightDistribution(WeightDistribution):
         pass
 
 
-class NIWGaussianWeightDistribution(WeightDistribution):
+class NIWGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     """
     Gaussian weight distribution with a normal inverse-Wishart prior.
     """
@@ -74,13 +92,13 @@ class NIWGaussianWeightDistribution(WeightDistribution):
         self._gaussian.resample(W[A==1])
 
 
-class LowRankGaussianWeightDistribution(WeightDistribution):
+class LowRankGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     """
     Low rank weight matrix (i.e. BPMF from Minh and Salakhutidnov)
     """
     pass
 
-class SBMGaussianWeightDistribution(WeightDistribution):
+class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     """
     A stochastic block model is a clustered network model with
     C:          Number of blocks

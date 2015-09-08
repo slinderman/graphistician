@@ -1,11 +1,10 @@
 """
-Demo of an eigenmodel.
+Demo of a latent distance model
 """
 import numpy as np
 import matplotlib.pyplot as plt
 
-from graphistician.distance_model import DistanceModel
-
+from graphistician.networks import UnweightedLatentDistanceModel
 
 try:
     from hips.plotting.colormaps import harvard_colors
@@ -24,7 +23,7 @@ def demo(seed=None):
     # Create an eigenmodel with N nodes and D-dimensional feature vectors
     N = 30      # Number of nodes
     D = 2       # Dimensionality of the feature space
-    true_model = DistanceModel(N=N, D=D)
+    true_model = UnweightedLatentDistanceModel(N=N, dim=D)
 
     # Set the true locations to be on a grid
     # w = 4
@@ -32,18 +31,18 @@ def demo(seed=None):
     # x = s * (np.arange(N) % w)
     # y = s * (np.arange(N) // w)
     # L = np.hstack((x[:,None], y[:,None]))
-    # true_model.L = L
+    # true_model.adjacency.L = L
 
     # Set the true locations to be on a circle
-    r = 1.2 + np.arange(N) // (N/2.)
+    r = 1.5 + np.arange(N) // (N/2.)
     th = np.linspace(0, 4 * np.pi, N, endpoint=False)
     x = r * np.cos(th)
     y = r * np.sin(th)
     L = np.hstack((x[:,None], y[:,None]))
-    true_model.L = L
+    true_model.adjacency.L = L
 
     # Sample a graph from the eigenmodel
-    A = true_model.rvs()
+    A,W = true_model.rvs()
 
     # Make a figure to plot the true and inferred network
     plt.ion()
@@ -52,15 +51,15 @@ def demo(seed=None):
     ax_test = fig.add_subplot(1,2,2, aspect="equal")
     true_model.plot(A, ax=ax_true)
 
-    test_model = DistanceModel(N=N, D=D)
+    test_model = UnweightedLatentDistanceModel(N=N, dim=D)
 
     # Fit with Gibbs sampling
     N_samples = 1000
-    lps       = [test_model.log_probability(A)]
+    lps       = [test_model.log_probability((A,W))]
     for smpl in xrange(N_samples):
         print "Iteration ", smpl
-        test_model.resample(A)
-        lps.append(test_model.log_probability(A))
+        test_model.resample((A,W))
+        lps.append(test_model.log_probability((A,W)))
         print "LP: ", lps[-1]
         print ""
 
@@ -68,7 +67,8 @@ def demo(seed=None):
         # Update the test plot
         if smpl % 10 == 0:
             ax_test.cla()
-            test_model.plot(A, ax=ax_test, color=color, L_true=true_model.L)
+            test_model.plot(A, ax=ax_test, color=color,
+                            L_true=true_model.adjacency.L)
             plt.pause(0.001)
 
     plt.ioff()
