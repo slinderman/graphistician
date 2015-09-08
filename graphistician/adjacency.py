@@ -6,6 +6,8 @@ import numpy as np
 
 from abstractions import AdjacencyDistribution
 
+from internals.utils import logistic
+
 class BernoulliAdjacencyDistribution(AdjacencyDistribution):
     """
     Bernoulli edge model with fixed probability
