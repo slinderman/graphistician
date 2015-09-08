@@ -9,7 +9,7 @@ from scipy.special import psi
 from scipy.misc import logsumexp
 from pybasicbayes.util.stats import sample_discrete_from_log
 
-from graphistician.abstractions import GaussianWeightedNetworkDistribution, NetworkDistribution, \
+from graphistician.old_abstractions import GaussianWeightedNetworkDistribution, NetworkDistribution, \
     WeightedDirectedNetwork, FixedGaussianNetwork
 from graphistician.internals.distributions import Bernoulli, Beta, Dirichlet, Discrete
 from graphistician.internals.weights import GaussianWeights

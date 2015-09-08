@@ -1,45 +1,93 @@
 """
-Latent distance model. Each node is embedded in R^D. Probability
-of connection is a function of distance in latent space.
+Super simple adjacency models. We either have a Bernoulli model
+with fixed probability or a beta-Bernoulli model.
 """
 import numpy as np
-import matplotlib.pyplot as plt
-from autograd import grad
-from hips.inference.hmc import hmc
 
-from graphistician.old_abstractions import GaussianWeightedNetworkDistribution
-from graphistician.internals.weights import GaussianWeights, GaussianFixedWeights
-from graphistician.internals.utils import logistic
+from abstractions import AdjacencyDistribution
 
-
-class DistanceModel(object):
+class BernoulliAdjacencyDistribution(AdjacencyDistribution):
     """
-    f_n ~ N(0, sigma^2 I)
-    A_{n', n} ~ Bern(\sigma(-||f_{n'} - f_{n}||_2^2))
+    Bernoulli edge model with fixed probability
     """
-    def __init__(self, N, D, sigma=1.0, mu0=0.0,
+    def __init__(self, N, p):
+        super(BernoulliAdjacencyDistribution, self).__init__(N)
+
+        assert p > 0 and p < 1
+        self.p = p
+        self._P = p * np.ones(N,N)
+
+    @property
+    def P(self):
+        return self._P
+
+    def log_prior(self):
+        return 0
+
+    def resample(self, edges):
+        pass
+
+
+class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution):
+    def __init__(self, N, tau1, tau0):
+        super(BetaBernoulliAdjacencyDistribution, self).__init__(N)
+        assert tau1 > 0 and tau0 > 0
+        self.tau1 = tau1
+        self.tau0 = tau0
+
+        self.p = np.random.beta(tau1, tau0)
+
+    @property
+    def P(self):
+        return self.p * np.ones((self.N, self.N))
+
+    def rvs(self, size=[]):
+        return np.random.rand(*size) < self.p
+
+    def log_prior(self):
+        return
+
+    def resample(self, A):
+        """
+        Resample p given observations of the weights
+        """
+        n_conns = A.sum()
+        n_noconns = A.size - n_conns
+
+        tau1 = self.tau1 + n_conns
+        tau0 = self.tau0 + n_noconns
+
+        self.p = np.random.beta(tau1, tau0)
+
+
+class LatentDistanceAdjacencyDistribution(object):
+    """
+    l_n ~ N(0, sigma^2 I)
+    A_{n', n} ~ Bern(\sigma(-||l_{n'} - l_{n}||_2^2))
+    """
+    def __init__(self, N, dim=2, sigma=1.0, mu0=0.0,
                  allow_self_connections=True):
         self.N = N
-        self.D = D
+        self.dim = dim
         self.sigma = sigma
         self.mu0 = mu0
-        self.L = np.sqrt(self.sigma) * np.random.randn(N,D)
+        self.L = np.sqrt(self.sigma) * np.random.randn(N,dim)
         self.allow_self_connections = allow_self_connections
 
     @property
-    def Mu(self):
+    def D(self):
         Mu = self.mu0 + -((self.L[:,None,:] - self.L[None,:,:])**2).sum(2)
 
         return Mu
 
     @property
     def P(self):
-        P = logistic(self.Mu)
+        P = logistic(self.D)
 
         if not self.allow_self_connections:
             np.fill_diagonal(P, 1e-32)
 
-        return logistic(self.Mu)
+        return logistic(self.D)
 
     def log_prior(self):
         """
@@ -153,6 +201,9 @@ class DistanceModel(object):
         :param L_true:  If given, rotate the inferred features to match F_true
         :return:
         """
+
+        import matplotlib.pyplot as plt
+
         assert self.D==2, "Can only plot for D==2"
 
         if ax is None:
@@ -210,6 +261,9 @@ class DistanceModel(object):
         Resample the locations given A
         :return:
         """
+        from autograd import grad
+        from hips.inference.hmc import hmc
+
         lp  = lambda L: self._hmc_log_probability(L, self.mu0, A)
         dlp = grad(lp)
 
@@ -222,6 +276,10 @@ class DistanceModel(object):
         Resample the locations given A
         :return:
         """
+        from autograd import grad
+        from hips.inference.hmc import hmc
+
+
         lp  = lambda mu0: self._hmc_log_probability(self.L, mu0, A)
         dlp = grad(lp)
 
@@ -229,155 +287,3 @@ class DistanceModel(object):
         nsteps = 10
         mu0 = hmc(lp, dlp, stepsz, nsteps, np.array(self.mu0), negative_log_prob=False)
         self.mu0 = float(mu0)
-
-
-class GaussianDistanceModel(GaussianWeightedNetworkDistribution):
-    def __init__(self, N, B, D=2, sigma=1.0, mu0=0.0,
-                 mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None,
-                 allow_self_connections=True):
-        self.N = N      # Number of nodes
-        self.B = B      # Dimensionality of weights
-        self.D = D      # Dimensionality of latent feature space
-
-        # Initialize the graph model
-        self._adjacency_dist = DistanceModel(N, D, sigma=sigma, mu0=mu0,
-                                             allow_self_connections=allow_self_connections)
-
-        self._weight_dist = GaussianWeights(self.B, mu_0=mu_0, kappa_0=kappa_0,
-                                            Sigma_0=Sigma_0, nu_0=nu_0)
-
-    @property
-    def adjacency_dist(self):
-        return self._adjacency_dist
-
-    @property
-    def weight_dist(self):
-        return self._weight_dist
-
-    @property
-    def allow_self_connections(self):
-        return self._adjacency_dist.allow_self_connections
-
-    @property
-    def P(self):
-        return self.adjacency_dist.P
-
-    @property
-    def Mu(self):
-        """
-        Get the NxNxB array of mean weights
-        :return:
-        """
-        return np.tile(self.weight_dist.mu[None, None, :],
-                       [self.N, self.N, 1])
-
-    @property
-    def Sigma(self):
-        """
-        Get the NxNxBxB array of weight covariances
-        :return:
-        """
-        return np.tile(self.weight_dist.sigma[None, None, :, :],
-                       [self.N, self.N, 1, 1])
-
-
-    # Extend the basic distribution functions
-    def log_prior(self):
-        lp = 0
-        lp += self.adjacency_dist.log_prior()
-        lp += self.weight_dist.log_prior()
-        return lp
-
-    def log_likelihood(self, network):
-        """
-        Compute the log likelihood of
-        :param x: A,W tuple
-        :return:
-        """
-        # Extract the adjacency matrix and the nonzero weights
-        A, W = network.A, network.W
-        W = W[A>0, :]
-
-        ll  = self.adjacency_dist.log_likelihood(A)
-        ll += self.weight_dist.log_likelihood(W).sum()
-        return ll
-
-    def rvs(self, size=[]):
-        A = self.adjacency_dist.rvs()
-        W = self.weight_dist.rvs(size=(self.N, self.N))
-
-        return A,W
-
-    # Extend the Gibbs sampling algorithm
-    def resample(self, network):
-        """
-        Reample given a list of A's and W's
-        :param data: (list of A's, list of W's)
-        :return:
-        """
-        self.adjacency_dist.resample(network.A)
-
-        # TODO: resample given just W
-        self.weight_dist.resample(network)
-
-    # Extend the mean field variational inference algorithm
-    def meanfieldupdate(self, network):
-        raise NotImplementedError()
-
-    ### Mean field
-    def expected_log_likelihood(self, network):
-        raise NotImplementedError()
-
-    def get_vlb(self):
-        raise NotImplementedError()
-
-    def resample_from_mf(self):
-        raise NotImplementedError()
-
-    def svi_step(self, network, minibatchfrac, stepsize):
-        raise NotImplementedError()
-
-    # Expose network level expectations
-    def mf_expected_log_p(self):
-        return self.adjacency_dist.mf_expected_log_p()
-
-    def mf_expected_log_notp(self):
-        return self.adjacency_dist.mf_expected_log_notp()
-
-    def mf_expected_mu(self):
-        E_mu = self.weight_dist.mf_expected_mu()
-        return np.tile(E_mu[None, None, :], [self.N, self.N, 1])
-
-    def mf_expected_mumuT(self):
-        E_mumuT = self.weight_dist.mf_expected_mumuT()
-        return np.tile(E_mumuT[None, None, :, :], [self.N, self.N, 1, 1])
-
-    def mf_expected_Sigma_inv(self):
-        E_Sigma_inv = self.weight_dist.mf_expected_Sigma_inv()
-        return np.tile(E_Sigma_inv[None, None, :, :], [self.N, self.N, 1, 1])
-
-    def mf_expected_logdet_Sigma(self):
-        E_logdet_Sigma = self.weight_dist.mf_expected_logdet_Sigma()
-        return E_logdet_Sigma * np.ones((self.N, self.N))
-
-    def plot(self, A, ax=None, color='k', F_true=None, lmbda_true=None):
-        self.adjacency_dist.plot(A, ax, color, F_true, lmbda_true)
-
-
-
-class FixedGaussianDistanceModel(GaussianDistanceModel):
-    def __init__(self, N, B, D=2, sigma=1.0, mu0=0.0,
-                 mu_W=None, Sigma_W=None):
-        self.N = N      # Number of nodes
-        self.B = B      # Dimensionality of weights
-        self.D = D      # Dimensionality of latent feature space
-
-        # Initialize the graph model
-        self._adjacency_dist = DistanceModel(N, D, sigma=sigma, mu0=mu0)
-
-        if mu_W is None:
-            mu_W = np.zeros(B)
-        if Sigma_W is None:
-            Sigma_W = np.eye(B)
-
-        self._weight_dist = GaussianFixedWeights(self.B, mu=mu_W, Sigma=Sigma_W)

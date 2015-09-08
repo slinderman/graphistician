@@ -6,8 +6,8 @@ from scipy.stats import norm
 import matplotlib.pyplot as plt
 from pybasicbayes.abstractions import GibbsSampling, MeanField
 
-from pypolyagamma import pgdrawv, PyRNG
-from graphistician.abstractions import FactorizedWeightedNetworkDistribution, \
+import pypolyagamma as ppg
+from graphistician.old_abstractions import FactorizedWeightedNetworkDistribution, \
     GaussianWeightedNetworkDistribution
 from graphistician.internals.utils import sample_truncnorm, expected_truncnorm, normal_cdf, logistic
 from graphistician.internals.distributions import ScalarGaussian, TruncatedScalarGaussian, Gaussian
