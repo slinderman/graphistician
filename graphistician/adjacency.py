@@ -6,7 +6,50 @@ import numpy as np
 from abstractions import AdjacencyDistribution
 from internals.utils import logistic
 
+from pybasicbayes.util.profiling import line_profiled
+PROFILING = True
+
 from pybasicbayes.abstractions import GibbsSampling
+
+class FixedAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
+    """
+    Simple class for a fixed adjacency matrix
+    """
+    def __init__(self, N, A):
+        super(FixedAdjacencyDistribution, self).__init__(N)
+        assert A.shape == (N,N)
+        assert np.all((A==1) | (A==0))
+        self._P = A
+
+    @property
+    def P(self):
+        return self._P
+
+    def log_prior(self):
+        return 0
+
+    def resample(self,data=[]):
+        pass
+
+    def sample_predictive_parameters(self):
+        raise Exception("Cannot sample parameters for FixedAdjacencyDistribution")
+
+
+class CompleteAdjacencyDistribution(FixedAdjacencyDistribution):
+    def __init__(self, N):
+        super(CompleteAdjacencyDistribution, self).__init__(N, np.ones((N,N)))
+
+    def sample_predictive_parameters(self):
+        return np.ones(self.N+1), np.ones(self.N+1)
+
+
+class EmptyAdjacencyDistribution(FixedAdjacencyDistribution):
+    def __init__(self, N):
+        super(EmptyAdjacencyDistribution, self).__init__(N, np.zeros((N,N)))
+
+    def sample_predictive_parameters(self):
+        return np.zeros(self.N+1), np.zeros(self.N+1)
+
 
 class BernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     """
@@ -29,9 +72,12 @@ class BernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     def resample(self, data=[]):
         pass
 
+    def sample_predictive_parameters(self):
+        return self.p * np.ones(self.N+1), self.p * np.ones(self.N+1)
+
 
 class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
-    def __init__(self, N, tau1, tau0):
+    def __init__(self, N, tau1=1.0, tau0=1.0):
         super(BetaBernoulliAdjacencyDistribution, self).__init__(N)
         assert tau1 > 0 and tau0 > 0
         self.tau1 = tau1
@@ -47,7 +93,9 @@ class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         return np.random.rand(*size) < self.p
 
     def log_prior(self):
-        return
+        from scipy.stats import beta
+
+        return beta(self.tau1, self.tau0).pdf(self.p)
 
     def resample(self, A):
         """
@@ -60,6 +108,9 @@ class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         tau0 = self.tau0 + n_noconns
 
         self.p = np.random.beta(tau1, tau0)
+
+    def sample_predictive_parameters(self):
+        return self.p * np.ones(self.N+1), self.p * np.ones(self.N+1)
 
 
 class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
@@ -149,25 +200,24 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
 
         return A
 
+    def sample_predictive_parameters(self):
+        Lext = \
+            np.vstack((self.L, np.sqrt(self.sigma) * np.random.randn(1, self.dim)))
+
+        D = self.mu0 + -((Lext[:,None,:] - Lext[None,:,:])**2).sum(2)
+        P = logistic(D)
+        if not self.allow_self_connections:
+            np.fill_diagonal(P, 0)
+        Prow = P[-1,:]
+        Pcol = P[:,-1]
+
+        return Prow, Pcol
+
     def compute_optimal_rotation(self, L_true):
         """
         Find a rotation matrix R such that F_inf * R ~= F_true
         :return:
         """
-        # from sklearn.linear_model import LinearRegression
-        # assert F_true.shape == (self.N, self.D), "F_true must be NxD"
-        # F_inf = self.F
-        #
-        # # TODO: Scale by lambda in order to get the scaled rotation
-        #
-        # R = np.zeros((self.D, self.D))
-        # for d in xrange(self.D):
-        #     lr = LinearRegression(fit_intercept=False)
-        #     R[:,d] = lr.fit(F_inf, F_true[:,d]).coef_
-        #
-        #     # TODO: Normalize this column of the rotation matrix
-        #     R[:,d] /= np.linalg.norm(R[:,d])
-        #
         from scipy.linalg import orthogonal_procrustes
         R = orthogonal_procrustes(self.L, L_true)[0]
         return R
@@ -286,7 +336,7 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     _default_weight_hypers = {}
 
     def __init__(self, N,
-                 C=1,
+                 C=2,
                  c=None, m=None, pi=1.0,
                  p=None, tau0=1.0, tau1=1.0,
                  allow_self_connections=True):
@@ -356,13 +406,11 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         :param x:    (m,p,v) tuple
         :return:
         """
-
-
+        from scipy.stats import dirichlet, beta
         lp = 0
-        lp += Dirichlet(self.pi).log_probability(self.m)
-        lp += Beta(self.tau1 * np.ones((self.C, self.C)),
-                   self.tau0 * np.ones((self.C, self.C))).\
-            log_probability(self.p).sum()
+        lp += dirichlet(self.pi).logpdf(self.m)
+        lp += beta(self.tau1 * np.ones((self.C, self.C)),
+                   self.tau0 * np.ones((self.C, self.C))).logpdf(self.p).sum()
         lp += (np.log(self.m)[self.c]).sum()
         return lp
 
@@ -377,6 +425,19 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
                 A[blk] = np.random.rand(blk.sum()) < self.p[c1,c2]
 
         return A
+
+    def sample_predictive_parameters(self):
+        # Sample a new cluster assignment
+        cext = np.concatenate((self.c, [np.random.choice(self.C, p=self.m)]))
+
+        P = self.p[np.ix_(cext, cext)]
+        if not self.allow_self_connections:
+            np.fill_diagonal(P, 0.0)
+
+        Prow = P[-1,:]
+        Pcol = P[:,-1]
+
+        return Prow, Pcol
 
     def invariant_sbm_order(self):
         """
@@ -448,6 +509,9 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         Resample block assignments given the weighted adjacency matrix
         and the impulse response fits (if used)
         """
+        from scipy.stats import bernoulli
+        from pybasicbayes.util.stats import sample_discrete_from_log
+
         if self.C == 1:
             return
 
@@ -468,17 +532,17 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
 
                     if n2 != n1:
                         # p(A[k,k'] | c)
-                        lp[cn1] += Bernoulli(self.p[cn1, cn2])\
-                                        .log_probability(A[n1,n2]).sum()
+                        # lp[cn1] += bernoulli(self.p[cn1, cn2]).logpmf(A[n1,n2]).sum()
+                        lp[cn1] += A[n1,n2] * np.log(self.p[cn1,cn2]) + (1-A[n1,n2]) * np.log(1-self.p[cn1,cn2])
 
                         # p(A[k',k] | c)
-                        lp[cn1] += Bernoulli(self.p[cn2, cn1])\
-                                        .log_probability(A[n2,n1]).sum()
+                        # lp[cn1] += bernoulli(self.p[cn2, cn1]).logpmf(A[n2,n1]).sum()
+                        lp[cn1] += A[n2,n1] * np.log(self.p[cn2,cn1]) + (1-A[n2,n1]) * np.log(1-self.p[cn2,cn1])
 
                     else:
                         # Self connection
-                        lp[cn1] += Bernoulli(self.p[cn1, cn1])\
-                                        .log_probability(A[n1,n1]).sum()
+                        # lp[cn1] += bernoulli(self.p[cn1, cn1]).logpmf(A[n1,n1]).sum()
+                        lp[cn1] += A[n1,n1] * np.log(self.p[cn1,cn1]) + (1-A[n1,n1]) * np.log(1-self.p[cn1,cn1])
 
             # Resample from lp
             self.c[n1] = sample_discrete_from_log(lp)

@@ -6,21 +6,6 @@ from pybasicbayes.abstractions import GibbsSampling
 
 from abstractions import WeightDistribution, GaussianWeightDistribution
 
-class NullWeightDistribution(WeightDistribution, GibbsSampling):
-    """
-    Dummy class for unweighted networks
-    """
-    def log_likelihood(self, (A,W)):
-        return 0
-
-    def log_prior(self):
-        return 0
-
-    def rvs(self,size=[]):
-        return None
-
-    def resample(self,data=[]):
-        pass
 
 class FixedGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     def __init__(self, N, B, mu, sigma):

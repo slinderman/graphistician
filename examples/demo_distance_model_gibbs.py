@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from graphistician.networks import UnweightedLatentDistanceModel
+from graphistician.adjacency import LatentDistanceAdjacencyDistribution
 
 try:
     from hips.plotting.colormaps import harvard_colors
@@ -23,7 +24,7 @@ def demo(seed=None):
     # Create an eigenmodel with N nodes and D-dimensional feature vectors
     N = 30      # Number of nodes
     D = 2       # Dimensionality of the feature space
-    true_model = UnweightedLatentDistanceModel(N=N, dim=D)
+    true_model = LatentDistanceAdjacencyDistribution(N=N, dim=D)
 
     # Set the true locations to be on a grid
     # w = 4
@@ -39,10 +40,10 @@ def demo(seed=None):
     x = r * np.cos(th)
     y = r * np.sin(th)
     L = np.hstack((x[:,None], y[:,None]))
-    true_model.adjacency.L = L
+    true_model.L = L
 
     # Sample a graph from the eigenmodel
-    A,W = true_model.rvs()
+    A = true_model.rvs()
 
     # Make a figure to plot the true and inferred network
     plt.ion()
@@ -51,15 +52,15 @@ def demo(seed=None):
     ax_test = fig.add_subplot(1,2,2, aspect="equal")
     true_model.plot(A, ax=ax_true)
 
-    test_model = UnweightedLatentDistanceModel(N=N, dim=D)
+    test_model = LatentDistanceAdjacencyDistribution(N=N, dim=D)
 
     # Fit with Gibbs sampling
     N_samples = 1000
-    lps       = [test_model.log_probability((A,W))]
+    lps       = [test_model.log_likelihood((A))]
     for smpl in xrange(N_samples):
         print "Iteration ", smpl
-        test_model.resample((A,W))
-        lps.append(test_model.log_probability((A,W)))
+        test_model.resample(A)
+        lps.append(test_model.log_probability(A))
         print "LP: ", lps[-1]
         print ""
 
@@ -68,7 +69,7 @@ def demo(seed=None):
         if smpl % 10 == 0:
             ax_test.cla()
             test_model.plot(A, ax=ax_test, color=color,
-                            L_true=true_model.adjacency.L)
+                            L_true=true_model.L)
             plt.pause(0.001)
 
     plt.ioff()
