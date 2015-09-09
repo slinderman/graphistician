@@ -4,8 +4,7 @@ import numpy as np
 from pybasicbayes.distributions import Gaussian
 from pybasicbayes.abstractions import GibbsSampling
 
-from abstractions import WeightDistribution, GaussianWeightDistribution
-
+from abstractions import GaussianWeightDistribution
 
 class FixedGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     def __init__(self, N, B, mu, sigma):
@@ -39,7 +38,7 @@ class NIWGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     """
     Gaussian weight distribution with a normal inverse-Wishart prior.
     """
-    def __init__(self, N, B, mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None):
+    def __init__(self, N, B=1, mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None):
         super(NIWGaussianWeightDistribution, self).__init__(N)
         self.B = B
 
@@ -61,15 +60,22 @@ class NIWGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
 
     @property
     def Mu(self):
-        raise NotImplementedError()
+        mu = self._gaussian.mu
+        return np.tile(mu[None,None,:], (self.N, self.N,1))
 
     @property
     def Sigma(self):
-        raise NotImplementedError()
+        Sig = self._gaussian.sigma
+        return np.tile(Sig[None,None,:,:], (self.N, self.N,1,1))
 
     def log_prior(self):
         # TODO: Compute log prior of Normal-Inverse Wishart
         return 0
+
+    def sample_predictive_parameters(self):
+        Murow = Mucol = np.tile(self._gaussian.mu[None,:], (self.N+1,1))
+        Lrow = Lcol = np.tile(self._gaussian.sigma_chol[None,:,:], (self.N+1,1,1))
+        return Murow, Mucol, Lrow, Lcol
 
     def resample(self, (A,W)):
         # Resample the Normal-inverse Wishart prior over mu and W
@@ -81,7 +87,8 @@ class LowRankGaussianWeightDistribution(GaussianWeightDistribution, GibbsSamplin
     """
     Low rank weight matrix (i.e. BPMF from Minh and Salakhutidnov)
     """
-    pass
+    def __init__(self, N, dim):
+        raise NotImplementedError
 
 class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     """
@@ -100,9 +107,8 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     _weight_class = None
     _default_weight_hypers = {}
 
-    def __init__(self, N, B,
-                 C=1,
-                 pi=1.0,
+    def __init__(self, N, B=1,
+                 C=2, pi=1.0,
                  mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None):
         """
         Initialize SBM with parameters defined above.
@@ -121,6 +127,18 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
 
         self.m = np.random.dirichlet(self.pi)
         self.c = np.random.choice(self.C, p=self.m, size=(self.N))
+
+        if mu_0 is None:
+            mu_0 = np.zeros(B)
+
+        if Sigma_0 is None:
+            Sigma_0 = np.eye(B)
+
+        if nu_0 is None:
+            nu_0 = B + 2
+
+        if kappa_0 is None:
+            kappa_0 = 1.0
 
         self._gaussians = [[Gaussian(mu_0=mu_0, nu_0=nu_0,
                                      kappa_0=kappa_0, sigma_0=Sigma_0)
@@ -172,8 +190,10 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         :param x:    (m,p,v) tuple
         :return:
         """
+        from scipy.stats import dirichlet
         lp = 0
-        lp += Dirichlet(self.pi).log_probability(self.m)
+        lp += dirichlet(self.pi).logpdf(self.m)
+        # TODO: Compute NIW logpdf
         # lp += Beta(self.tau1 * np.ones((self.C, self.C)),
         #            self.tau0 * np.ones((self.C, self.C))).\
         #     log_probability(self.p).sum()
@@ -191,6 +211,18 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
                 A[blk] = np.random.rand(blk.sum()) < self.p[c1,c2]
 
         return A
+
+    def sample_predictive_parameters(self):
+        # Sample a new cluster assignment
+        c2 = np.random.choice(self.C, p=self.m)
+        cext = np.concatenate((self.c, [c2]))
+
+        Murow = np.array([self._gaussians[c2][c1].mu for c1 in cext])
+        Lrow  = np.array([self._gaussians[c2][c1].sigma_chol for c1 in cext])
+        Mucol = np.array([self._gaussians[c1][c2].mu for c1 in cext])
+        Lcol = np.array([self._gaussians[c1][c2].sigma_chol for c1 in cext])
+
+        return Murow, Mucol, Lrow, Lcol
 
     ###
     ### Implement Gibbs sampling for SBM
@@ -213,6 +245,8 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         """
         Resample block assignments given the weighted adjacency matrix
         """
+        from pybasicbayes.util.stats import sample_discrete_from_log
+
         if self.C == 1:
             return
 

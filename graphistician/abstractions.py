@@ -6,7 +6,6 @@ from scipy.misc import logsumexp
 
 from pybasicbayes.abstractions import Distribution
 
-
 class NetworkDistribution(Distribution):
     """
     Base class for network distributions. Distributions do not contain
@@ -255,20 +254,20 @@ class GaussianWeightDistribution(WeightDistribution):
         Sample a new row and column of A
         """
         N = self.N
-        Murow, Mucol, Sigrow, Sigcol = self.sample_predictive_parameters()
+        Murow, Mucol, Lrow, Lcol = self.sample_predictive_parameters()
 
         # Make sure they are consistent in the (N+1)-th entry
         assert Murow[-1] == Mucol[-1]
-        assert Sigrow[-1] == Sigcol[-1]
+        assert Lrow[-1] == Lcol[-1]
 
         # Sample and make sure they are consistent in the (N+1)-th entry
         Wrow = np.zeros((N+1, self.B))
         Wcol = np.zeros((N+1, self.B))
 
         for n in xrange(N+1):
-            Wrow[n] = np.random.multivariate_normal(Murow[n], Sigrow[n])
+            Wrow[n] = np.random.multivariate_normal(Murow[n], Lrow[n].dot(Lrow[n].T))
             if n < N:
-                Wcol[n] = np.random.multivariate_normal(Mucol[n], Sigcol[n])
+                Wcol[n] = np.random.multivariate_normal(Mucol[n], Lcol[n].dot(Lcol[n].T))
             else:
                 Wcol[n] = Wrow[n]
 
@@ -280,20 +279,41 @@ class GaussianWeightDistribution(WeightDistribution):
         samples of the predictive parameters
         """
         from scipy.stats import multivariate_normal
-        N = self.N
+        from numpy.core.umath_tests import inner1d
+        import scipy.linalg
+
+        N, B = self.N, self.B
         assert Arow.shape == Acol.shape == (N+1,)
 
         # Get the predictive parameters
         lps = np.zeros(M)
         for m in xrange(M):
-            Murow, Mucol, Sigrow, Sigcol = self.sample_predictive_parameters()
+            Murow, Mucol, Lrow, Lcol = self.sample_predictive_parameters()
+
+            # for n in xrange(N+1):
+            #     if Arow[n]:
+            #         lps[m] += multivariate_normal(Murow[n], Sigrow[n]).pdf(Wrow[n])
+            #
+            #     if n < N and Acol[n]:
+            #         lps[m] += multivariate_normal(Mucol[n], Sigcol[n]).pdf(Wcol[n])
+
+            # Sigrow_chol = np.array([np.linalg.cholesky(S) for S in Sigrow])
+            # Sigcol_chol = np.array([np.linalg.cholesky(S) for S in Sigcol])
 
             for n in xrange(N+1):
                 if Arow[n]:
-                    lps[m] += multivariate_normal(Murow[n], Sigrow[n]).pdf(Wrow[n])
+                    L = Lrow[n]
+                    x = Wrow[n] - Murow[n]
+                    xs = scipy.linalg.solve_triangular(L, x.T,lower=True)
+                    lps[m] += -1./2. * inner1d(xs.T,xs.T) - B/2.*np.log(2*np.pi) \
+                            - np.log(L.diagonal()).sum()
 
                 if n < N and Acol[n]:
-                    lps[m] += multivariate_normal(Mucol[n], Sigcol[n]).pdf(Wcol[n])
+                    L = Lcol[n]
+                    x = Wcol[n] - Mucol[n]
+                    xs = scipy.linalg.solve_triangular(L, x.T,lower=True)
+                    lps[m] += -1./2. * inner1d(xs.T,xs.T) - B/2.*np.log(2*np.pi) \
+                            - np.log(L.diagonal()).sum()
 
         # Compute average log probability
         lp = -np.log(M) + logsumexp(lps)

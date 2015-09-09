@@ -54,6 +54,7 @@ class FactorizedNetworkDistribution(NetworkDistribution, GibbsSampling):
         pll = 0
         pll += self.adjacency.approx_predictive_ll(Arow, Acol, M=M)
         pll += self.weights.approx_predictive_ll(Arow, Acol, Wrow, Wcol, M=M)
+        return pll
 
     def resample(self, (A,W)):
         self.adjacency.resample(A)

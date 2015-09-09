@@ -6,9 +6,6 @@ import numpy as np
 from abstractions import AdjacencyDistribution
 from internals.utils import logistic
 
-from pybasicbayes.util.profiling import line_profiled
-PROFILING = True
-
 from pybasicbayes.abstractions import GibbsSampling
 
 class FixedAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
