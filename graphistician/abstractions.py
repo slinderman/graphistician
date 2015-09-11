@@ -15,6 +15,20 @@ class NetworkDistribution(Distribution):
     """
     __metaclass__ = abc.ABCMeta
 
+    @abc.abstractproperty
+    def adjacency(self):
+        """
+        The adjacency distribution
+        """
+        raise NotImplementedError
+
+    @abc.abstractproperty
+    def weights(self):
+        """
+        The weights distribution
+        """
+        raise NotImplementedError
+
     @abc.abstractmethod
     def log_prior(self):
         """

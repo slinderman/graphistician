@@ -21,14 +21,21 @@ class FixedGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling)
 
     @property
     def Mu(self):
-        raise NotImplementedError()
+        mu = self._gaussian.mu
+        return np.tile(mu[None,None,:], (self.N, self.N,1))
 
     @property
     def Sigma(self):
-        raise NotImplementedError()
+        Sig = self._gaussian.sigma
+        return np.tile(Sig[None,None,:,:], (self.N, self.N,1,1))
 
     def log_prior(self):
         return 0
+
+    def sample_predictive_parameters(self):
+        Murow = Mucol = np.tile(self._gaussian.mu[None,:], (self.N+1,1))
+        Lrow = Lcol = np.tile(self._gaussian.sigma_chol[None,:,:], (self.N+1,1,1))
+        return Murow, Mucol, Lrow, Lcol
 
     def resample(self, (A,W)):
         pass

@@ -57,7 +57,7 @@ class BernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
 
         assert p > 0 and p < 1
         self.p = p
-        self._P = p * np.ones(N,N)
+        self._P = p * np.ones((N,N))
 
     @property
     def P(self):

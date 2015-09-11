@@ -1,3 +1,5 @@
+import numpy as np
+
 from pybasicbayes.abstractions import GibbsSampling
 
 from abstractions import NetworkDistribution, AdjacencyDistribution, WeightDistribution
@@ -11,9 +13,17 @@ class FactorizedNetworkDistribution(NetworkDistribution, GibbsSampling):
 
         super(FactorizedNetworkDistribution, self).__init__()
         assert issubclass(adjacency_class, AdjacencyDistribution)
-        self.adjacency = adjacency_class(N, **adjacency_kwargs)
+        self._adjacency = adjacency_class(N, **adjacency_kwargs)
         assert issubclass(weight_class, WeightDistribution)
-        self.weights = weight_class(N, **weight_kwargs)
+        self._weights = weight_class(N, **weight_kwargs)
+
+    @property
+    def adjacency(self):
+        return self._adjacency
+
+    @property
+    def weights(self):
+        return self._weights
 
     def log_likelihood(self, (A,W)):
         lls = self.adjacency.log_likelihood(A)
@@ -59,4 +69,18 @@ class FactorizedNetworkDistribution(NetworkDistribution, GibbsSampling):
     def resample(self, (A,W)):
         self.adjacency.resample(A)
         self.weights.resample((A,W))
+
+
+class GaussianBernoulliNetwork(FactorizedNetworkDistribution):
+    def __init__(self, N, B, p=0.5, mu=None, sigma=None):
+        if mu is None:
+            mu = np.zeros(B)
+        if sigma is None:
+            sigma = np.eye(B)
+
+        super(GaussianBernoulliNetwork, self).__init__(N,
+            adjacency.BernoulliAdjacencyDistribution, {"p": p},
+            weights.FixedGaussianWeightDistribution, {"B": B, "mu": mu, "sigma": sigma}
+        )
+
 
