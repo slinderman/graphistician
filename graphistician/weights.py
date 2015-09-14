@@ -7,7 +7,7 @@ from pybasicbayes.abstractions import GibbsSampling
 from abstractions import GaussianWeightDistribution
 
 class FixedGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
-    def __init__(self, N, B, mu, sigma):
+    def __init__(self, N, B, mu, sigma, mu_self=None, sigma_self=None):
         super(FixedGaussianWeightDistribution, self).__init__(N)
         self.B = B
 
@@ -17,17 +17,33 @@ class FixedGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling)
         assert sigma.shape == (B,B)
         self.sigma = sigma
 
+        if mu_self is not None and sigma_self is not None:
+            self._self_gaussian = Gaussian(mu_self, sigma_self)
+        else:
+            self._self_gaussian = self._gaussian
+
         self._gaussian = Gaussian(mu, sigma)
 
     @property
     def Mu(self):
         mu = self._gaussian.mu
-        return np.tile(mu[None,None,:], (self.N, self.N,1))
+        Mu = np.tile(mu[None,None,:], (self.N, self.N,1))
+
+        for n in xrange(self.N):
+            Mu[n,n,:] = self._self_gaussian.mu
+
+        return Mu
 
     @property
     def Sigma(self):
-        Sig = self._gaussian.sigma
-        return np.tile(Sig[None,None,:,:], (self.N, self.N,1,1))
+        sig = self._gaussian.sigma
+        Sig = np.tile(sig[None,None,:,:], (self.N, self.N,1,1))
+
+        for n in xrange(self.N):
+            Sig[n,n,:,:] = self._self_gaussian.sigma
+
+        return Sig
+
 
     def log_prior(self):
         return 0
@@ -65,15 +81,29 @@ class NIWGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         self._gaussian = Gaussian(mu_0=mu_0, sigma_0=Sigma_0,
                                   nu_0=nu_0, kappa_0=kappa_0)
 
+        # Special case self-weights (along the diagonal)
+        self._self_gaussian = Gaussian(mu_0=mu_0, sigma_0=Sigma_0,
+                                       nu_0=nu_0, kappa_0=kappa_0)
+
     @property
     def Mu(self):
         mu = self._gaussian.mu
-        return np.tile(mu[None,None,:], (self.N, self.N,1))
+        Mu = np.tile(mu[None,None,:], (self.N, self.N,1))
+
+        for n in xrange(self.N):
+            Mu[n,n,:] = self._self_gaussian.mu
+
+        return Mu
 
     @property
     def Sigma(self):
-        Sig = self._gaussian.sigma
-        return np.tile(Sig[None,None,:,:], (self.N, self.N,1,1))
+        sig = self._gaussian.sigma
+        Sig = np.tile(sig[None,None,:,:], (self.N, self.N,1,1))
+
+        for n in xrange(self.N):
+            Sig[n,n,:,:] = self._self_gaussian.sigma
+
+        return Sig
 
     def log_prior(self):
         # TODO: Compute log prior of Normal-Inverse Wishart
@@ -82,17 +112,27 @@ class NIWGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     def sample_predictive_parameters(self):
         Murow = Mucol = np.tile(self._gaussian.mu[None,:], (self.N+1,1))
         Lrow = Lcol = np.tile(self._gaussian.sigma_chol[None,:,:], (self.N+1,1,1))
+
+        Murow[-1,:] = self._self_gaussian.mu
+        Mucol[-1,:] = self._self_gaussian.mu
+        Lrow[-1,:,:] = self._self_gaussian.sigma_chol
+        Lcol[-1,:,:] = self._self_gaussian.sigma_chol
         return Murow, Mucol, Lrow, Lcol
 
     def resample(self, (A,W)):
         # Resample the Normal-inverse Wishart prior over mu and W
         # given W for which A=1
-        self._gaussian.resample(W[A==1])
+        A_offdiag = A.copy()
+        np.fill_diagonal(A_offdiag, 0)
+
+        A_ondiag = A * np.eye(self.N)
+        self._gaussian.resample(W[A_offdiag==1])
+        self._self_gaussian.resample(W[A_ondiag==1])
 
 
 class LowRankGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     """
-    Low rank weight matrix (i.e. BPMF from Minh and Salakhutidnov)
+    Low rank weight matrix (i.e. BPMF from Mnih and Salakhutidnov)
     """
     def __init__(self, N, dim):
         raise NotImplementedError
@@ -245,7 +285,7 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         """
         for c1 in xrange(self.C):
             for c2 in xrange(self.C):
-                mask = ((self.c==c1)[:,None] * (self.c==c2)[None,:]) & A
+                mask = ((self.c==c1)[:,None] * (self.c==c2)[None,:]) & (A.astype(np.bool))
                 self._gaussians[c1][c2].resample(W[mask])
 
     def resample_c(self, A, W):
