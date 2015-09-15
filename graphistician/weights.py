@@ -61,6 +61,7 @@ class NIWGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     """
     Gaussian weight distribution with a normal inverse-Wishart prior.
     """
+    # TODO: Specify the self weight parameters in the constructor
     def __init__(self, N, B=1, mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None):
         super(NIWGaussianWeightDistribution, self).__init__(N)
         self.B = B
@@ -150,13 +151,11 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     mu0, nu0, kappa0, Sigma0: Parameters of NIW prior over (mu,Sig)
     """
 
-    # Override this in base classes!
-    _weight_class = None
-    _default_weight_hypers = {}
-
+    # TODO: Specify the self weight parameters in the constructor
     def __init__(self, N, B=1,
                  C=2, pi=1.0,
-                 mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None):
+                 mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None,
+                 special_case_self_conns=True):
         """
         Initialize SBM with parameters defined above.
         """
@@ -192,16 +191,20 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
                             for _ in xrange(C)]
                            for _ in xrange(C)]
 
+        # Special case self-weights (along the diagonal)
+        self.special_case_self_conns = special_case_self_conns
+        if special_case_self_conns:
+            self._self_gaussian = Gaussian(mu_0=mu_0, sigma_0=Sigma_0,
+                                           nu_0=nu_0, kappa_0=kappa_0)
+
     @property
     def _Mu(self):
-        # TODO: Double check this
         return np.array([[self._gaussians[c1][c2].mu
                           for c2 in xrange(self.C)]
                          for c1 in xrange(self.C)])
 
     @property
     def _Sigma(self):
-        # TODO: Double check this
         return np.array([[self._gaussians[c1][c2].sigma
                           for c2 in xrange(self.C)]
                          for c1 in xrange(self.C)])
@@ -214,8 +217,11 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         """
         _Mu = self._Mu
         Mu = _Mu[np.ix_(self.c, self.c)]
-        # if not self.allow_self_connections:
-        #     np.fill_diagonal(P, 0.0)
+
+        if self.special_case_self_conns:
+            for n in xrange(self.N):
+                Mu[n,n] = self._self_gaussian.mu
+
         return Mu
 
     @property
@@ -226,8 +232,11 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         """
         _Sigma = self._Sigma
         Sigma = _Sigma[np.ix_(self.c, self.c)]
-        # if not self.allow_self_connections:
-        #     np.fill_diagonal(P, 0.0)
+
+        if self.special_case_self_conns:
+            for n in xrange(self.N):
+                Sigma[n,n] = self._self_gaussian.sigma
+
         return Sigma
 
     def log_prior(self):
@@ -250,14 +259,18 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
 
     def rvs(self, size=[]):
         # Sample a network given m, c, p
-        A = np.zeros((self.N, self.N))
+        W = np.zeros((self.N, self.N, self.B))
 
         for c1 in xrange(self.C):
             for c2 in xrange(self.C):
                 blk = (self.c==c1)[:,None] * (self.c==c2)[None,:]
-                A[blk] = np.random.rand(blk.sum()) < self.p[c1,c2]
+                W[blk] = self._gaussians[c1][c2].rvs(size=blk.shape)
 
-        return A
+        if self.special_case_self_conns:
+            for n in xrange(self.N):
+                W[n,n] = self._self_gaussian.rvs()
+
+        return W
 
     def sample_predictive_parameters(self):
         # Sample a new cluster assignment
@@ -268,6 +281,10 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         Lrow  = np.array([self._gaussians[c2][c1].sigma_chol for c1 in cext])
         Mucol = np.array([self._gaussians[c1][c2].mu for c1 in cext])
         Lcol = np.array([self._gaussians[c1][c2].sigma_chol for c1 in cext])
+
+        if self.special_case_self_conns:
+            Murow[-1] = Mucol[-1] = self._self_gaussian.mu
+            Lrow[-1] = Lcol[-1] = self._self_gaussian.sigma_chol
 
         return Murow, Mucol, Lrow, Lcol
 
@@ -283,10 +300,24 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         """
         Resample p given observations of the weights
         """
+        Abool = A.astype(np.bool)
+        def _get_mask(c1, c2):
+            mask = ((self.c==c1)[:,None] * (self.c==c2)[None,:])
+            mask &= Abool
+            if self.special_case_self_conns:
+                mask &= True - np.eye(self.N, dtype=np.bool)
+
+            return mask
+
         for c1 in xrange(self.C):
             for c2 in xrange(self.C):
-                mask = ((self.c==c1)[:,None] * (self.c==c2)[None,:]) & (A.astype(np.bool))
+                mask = _get_mask(c1, c2)
                 self._gaussians[c1][c2].resample(W[mask])
+
+        # Resample self connection
+        if self.special_case_self_conns:
+            mask = np.eye(self.N, dtype=np.bool) & Abool
+            self._self_gaussian.resample(W[mask])
 
     def resample_c(self, A, W):
         """
@@ -311,6 +342,12 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
                 # Compute probability for each incoming and outgoing
                 for n2 in xrange(self.N):
                     cn2 = self.c[n2]
+
+                    # If we are special casing the self connections then
+                    # we can just continue if n1==n2 since its weight has
+                    # no bearing on the cluster assignment
+                    if self.special_case_self_conns and n1 == n2:
+                        continue
 
                     if A[n1,n2]:
                         if n2 != n1:

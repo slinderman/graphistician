@@ -52,12 +52,15 @@ class BernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     """
     Bernoulli edge model with fixed probability
     """
-    def __init__(self, N, p):
+    def __init__(self, N, p, p_self=None):
         super(BernoulliAdjacencyDistribution, self).__init__(N)
 
         assert p > 0 and p < 1
         self.p = p
+        self.p_self = p_self if p_self else p
         self._P = p * np.ones((N,N))
+        np.fill_diagonal(self._P, self.p_self)
+
 
     @property
     def P(self):
@@ -70,11 +73,15 @@ class BernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         pass
 
     def sample_predictive_parameters(self):
-        return self.p * np.ones(self.N+1), self.p * np.ones(self.N+1)
+        p_row, p_col = self.p * np.ones(self.N+1), self.p * np.ones(self.N+1)
+        p_row[-1] = self.p_self
+        p_col[-1] = self.p_self
+
+        return p_row, p_col
 
 
 class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
-    def __init__(self, N, tau1=1.0, tau0=1.0):
+    def __init__(self, N, tau1=1.0, tau0=1.0, tau1_self=None, tau0_self=None):
         super(BetaBernoulliAdjacencyDistribution, self).__init__(N)
         assert tau1 > 0 and tau0 > 0
         self.tau1 = tau1
@@ -82,32 +89,70 @@ class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
 
         self.p = np.random.beta(tau1, tau0)
 
+        if tau1_self is not None and tau0_self is not None:
+            self.self_connection = True
+            self.tau1_self = tau1_self
+            self.tau0_self = tau0_self
+            self.p_self = np.random.beta(tau1_self, tau0_self)
+        else:
+            self.self_connection = False
+
+
     @property
     def P(self):
-        return self.p * np.ones((self.N, self.N))
+        P = self.p * np.ones((self.N, self.N))
+        if self.self_connection:
+            np.fill_diagonal(P, self.p_self)
+        return P
 
     def rvs(self, size=[]):
-        return np.random.rand(*size) < self.p
+        return np.random.rand(self.N, self.N) < self.P
 
     def log_prior(self):
         from scipy.stats import beta
 
-        return beta(self.tau1, self.tau0).pdf(self.p)
+        lp = beta(self.tau1, self.tau0).pdf(self.p)
+        if self.self_connection:
+            lp += beta(self.tau1_self, self.tau0_self).pdf(self.p_self)
+
+        return lp
 
     def resample(self, A):
         """
         Resample p given observations of the weights
         """
-        n_conns = A.sum()
-        n_noconns = A.size - n_conns
 
-        tau1 = self.tau1 + n_conns
-        tau0 = self.tau0 + n_noconns
+        def _posterior_params(_A, mask, t1, t0):
+            n_conns = _A[mask].sum()
+            n_noconns = mask.sum() - n_conns
 
-        self.p = np.random.beta(tau1, tau0)
+            t1p = t1 + n_conns
+            t0p = t0 + n_noconns
+
+            return t1p, t0p
+
+        if self.self_connection:
+            # First update off diagonal probability
+            mask = (1 - np.eye(self.N)).astype(np.bool)
+            t1p, t0p = _posterior_params(A, mask, self.tau1, self.tau0)
+            self.p = np.random.beta(t1p, t0p)
+
+            # Then update self probability
+            mask = np.eye(self.N).astype(np.bool)
+            t1p, t0p = _posterior_params(A, mask, self.tau1, self.tau0)
+            self.p_self = np.random.beta(t1p, t0p)
+
+        else:
+            mask = np.ones((self.N, self.N), dtype=np.bool)
+            t1p, t0p = _posterior_params(A, mask, self.tau1, self.tau0)
+            self.p = np.random.beta(t1p, t0p)
 
     def sample_predictive_parameters(self):
-        return self.p * np.ones(self.N+1), self.p * np.ones(self.N+1)
+        p_row, p_col = self.p * np.ones(self.N+1), self.p * np.ones(self.N+1)
+        if self.self_connection:
+            p_row[-1] = p_col[-1] = self.p_self
+
+        return p_row, p_col
 
 
 class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
@@ -115,28 +160,25 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     l_n ~ N(0, sigma^2 I)
     A_{n', n} ~ Bern(\sigma(-||l_{n'} - l_{n}||_2^2))
     """
-    def __init__(self, N, dim=2, sigma=1.0, mu0=0.0,
-                 allow_self_connections=True):
+    def __init__(self, N, dim=2, sigma=1.0, mu0=0.0, mu_self=0.0):
         self.N = N
         self.dim = dim
         self.sigma = sigma
-        self.mu0 = mu0
+        self.mu_0 = mu0
+        self.mu_self = mu_self
         self.L = np.sqrt(self.sigma) * np.random.randn(N,dim)
-        self.allow_self_connections = allow_self_connections
 
     @property
     def D(self):
-        Mu = self.mu0 + -((self.L[:,None,:] - self.L[None,:,:])**2).sum(2)
+        Mu = -((self.L[:,None,:] - self.L[None,:,:])**2).sum(2)
+        Mu += self.mu_0
+        Mu += self.mu_self * np.eye(self.N)
 
         return Mu
 
     @property
     def P(self):
         P = logistic(self.D)
-
-        if not self.allow_self_connections:
-            np.fill_diagonal(P, 1e-32)
-
         return P
 
     def log_prior(self):
@@ -149,7 +191,7 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         lp += -0.5 * (self.L * self.L / self.sigma).sum()
         return lp
 
-    def _hmc_log_probability(self, L, mu0, A):
+    def _hmc_log_probability(self, L, mu_0, mu_self, A):
         """
         Compute the log probability as a function of L.
         This allows us to take the gradients wrt L using autograd.
@@ -164,7 +206,7 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         D = - anp.sum((L1-L2)**2, axis=2)
 
         # Compute the logit probability
-        logit_P = mu0 + D
+        logit_P = D + mu_0 + mu_self * np.eye(self.N)
 
         # Take the logistic of the negative distance
         P = 1.0 / (1+anp.exp(-logit_P))
@@ -176,7 +218,7 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         lp = -0.5 * anp.sum(L * L / self.sigma)
 
         # Log prior of mu0 under standardGaussian prior
-        lp += -0.5 * self.mu0**2
+        lp += -0.5 * self.mu_0**2
 
         return ll + lp
 
@@ -201,10 +243,11 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         Lext = \
             np.vstack((self.L, np.sqrt(self.sigma) * np.random.randn(1, self.dim)))
 
-        D = self.mu0 + -((Lext[:,None,:] - Lext[None,:,:])**2).sum(2)
+        D = -((Lext[:,None,:] - Lext[None,:,:])**2).sum(2)
+        D += self.mu_0
+        D += self.mu_self * np.eye(self.N)
+
         P = logistic(D)
-        if not self.allow_self_connections:
-            np.fill_diagonal(P, 0)
         Prow = P[-1,:]
         Pcol = P[:,-1]
 
@@ -278,8 +321,9 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         # Sample the latent positions
         self._resample_L(A)
 
-        # Resample the offset
-        self._resample_mu0(A)
+        # Resample the offsets
+        self._resample_mu_0(A)
+        self._resample_mu_self(A)
 
     def _resample_L(self, A):
         """
@@ -289,14 +333,14 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         from autograd import grad
         from hips.inference.hmc import hmc
 
-        lp  = lambda L: self._hmc_log_probability(L, self.mu0, A)
+        lp  = lambda L: self._hmc_log_probability(L, self.mu_0, self.mu_self, A)
         dlp = grad(lp)
 
         stepsz = 0.005
         nsteps = 10
         self.L = hmc(lp, dlp, stepsz, nsteps, self.L.copy(), negative_log_prob=False)
 
-    def _resample_mu0(self, A):
+    def _resample_mu_0(self, A):
         """
         Resample the locations given A
         :return:
@@ -305,14 +349,30 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         from hips.inference.hmc import hmc
 
 
-        lp  = lambda mu0: self._hmc_log_probability(self.L, mu0, A)
+        lp  = lambda mu_0: self._hmc_log_probability(self.L, mu_0, self.mu_self, A)
         dlp = grad(lp)
 
         stepsz = 0.005
         nsteps = 10
-        mu0 = hmc(lp, dlp, stepsz, nsteps, np.array(self.mu0), negative_log_prob=False)
-        self.mu0 = float(mu0)
+        mu_0 = hmc(lp, dlp, stepsz, nsteps, np.array(self.mu_0), negative_log_prob=False)
+        self.mu_0 = float(mu_0)
 
+    def _resample_mu_self(self, A):
+        """
+        Resample the self connection offset
+        :return:
+        """
+        from autograd import grad
+        from hips.inference.hmc import hmc
+
+
+        lp  = lambda mu_self: self._hmc_log_probability(self.L, self.mu_0, mu_self, A)
+        dlp = grad(lp)
+
+        stepsz = 0.005
+        nsteps = 10
+        mu_self = hmc(lp, dlp, stepsz, nsteps, np.array(self.mu_self), negative_log_prob=False)
+        self.mu_self = float(mu_self)
 
 
 class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
