@@ -245,7 +245,7 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
 
         D = -((Lext[:,None,:] - Lext[None,:,:])**2).sum(2)
         D += self.mu_0
-        D += self.mu_self * np.eye(self.N)
+        D += self.mu_self * np.eye(self.N+1)
 
         P = logistic(D)
         Prow = P[-1,:]

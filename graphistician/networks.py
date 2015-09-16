@@ -70,6 +70,10 @@ class FactorizedNetworkDistribution(NetworkDistribution, GibbsSampling):
         self.adjacency.resample(A)
         self.weights.resample((A,W))
 
+    def meanfieldupdate(self, expected_suff_stats):
+        # TODO: Actually implement this!
+        pass
+
 
 class GaussianBernoulliNetwork(FactorizedNetworkDistribution):
     def __init__(self, N, B, p=0.5, mu=None, sigma=None):
