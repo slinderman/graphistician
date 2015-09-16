@@ -17,12 +17,13 @@ class FixedGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling)
         assert sigma.shape == (B,B)
         self.sigma = sigma
 
+        self._gaussian = Gaussian(mu, sigma)
+
         if mu_self is not None and sigma_self is not None:
             self._self_gaussian = Gaussian(mu_self, sigma_self)
         else:
             self._self_gaussian = self._gaussian
 
-        self._gaussian = Gaussian(mu, sigma)
 
     @property
     def Mu(self):

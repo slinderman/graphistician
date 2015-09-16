@@ -187,8 +187,10 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         """
         lp  = 0
 
-        # Log prior of F under spherical Gaussian prior
+        # TODO: Log prior of F under spherical Gaussian prior
         lp += -0.5 * (self.L * self.L / self.sigma).sum()
+
+        # TODO: Prior of mu_0 and mu_self
         return lp
 
     def _hmc_log_probability(self, L, mu_0, mu_self, A):
@@ -218,7 +220,9 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         lp = -0.5 * anp.sum(L * L / self.sigma)
 
         # Log prior of mu0 under standardGaussian prior
-        lp += -0.5 * self.mu_0**2
+        lp += -0.5 * mu_0**2
+
+        lp += -0.5 * mu_self**2
 
         return ll + lp
 
