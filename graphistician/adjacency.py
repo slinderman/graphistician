@@ -187,10 +187,13 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         """
         lp  = 0
 
-        # TODO: Log prior of F under spherical Gaussian prior
-        lp += -0.5 * (self.L * self.L / self.sigma).sum()
+        # Log prior of F under spherical Gaussian prior
+        from scipy.stats import norm
+        lp += norm.logpdf(self.L, 0, np.sqrt(self.sigma)).sum()
 
-        # TODO: Prior of mu_0 and mu_self
+        # Log prior of mu_0 and mu_self
+        lp += norm.logpdf(self.mu_0, 0, 1)
+        lp += norm.logpdf(self.mu_self, 0, 1)
         return lp
 
     def _hmc_log_probability(self, L, mu_0, mu_self, A):
@@ -237,9 +240,6 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         # TODO: Sample the specified number of graphs
         P = self.P
         A = np.random.rand(self.N, self.N) < P
-
-        # TODO: Handle self connections
-        # np.fill_diagonal(A, False)
 
         return A
 

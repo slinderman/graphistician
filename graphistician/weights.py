@@ -108,8 +108,12 @@ class NIWGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         return Sig
 
     def log_prior(self):
-        # TODO: Compute log prior of Normal-Inverse Wishart
-        return 0
+        from graphistician.internals.utils import normal_inverse_wishart_log_prob
+        lp = 0
+        lp += normal_inverse_wishart_log_prob(self._gaussian)
+        lp += normal_inverse_wishart_log_prob(self._self_gaussian)
+
+        return lp
 
     def sample_predictive_parameters(self):
         Murow = Mucol = np.tile(self._gaussian.mu[None,:], (self.N+1,1))
@@ -248,12 +252,21 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         :return:
         """
         from scipy.stats import dirichlet
+        from graphistician.internals.utils import normal_inverse_wishart_log_prob
         lp = 0
+
+        # Get the log probability of the block probabilities
         lp += dirichlet(self.pi).logpdf(self.m)
-        # TODO: Compute NIW logpdf
-        # lp += Beta(self.tau1 * np.ones((self.C, self.C)),
-        #            self.tau0 * np.ones((self.C, self.C))).\
-        #     log_probability(self.p).sum()
+
+        # Get the prior probability of the Gaussian parameters under NIW prior
+        for c1 in xrange(self.C):
+            for c2 in xrange(self.C):
+                lp += normal_inverse_wishart_log_prob(self._gaussians[c1][c2])
+
+        if self.special_case_self_conns:
+            lp += normal_inverse_wishart_log_prob(self._self_gaussian)
+
+        # Get the probability of the block assignments
         lp += (np.log(self.m)[self.c]).sum()
         return lp
 

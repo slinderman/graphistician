@@ -16,6 +16,25 @@ def normal_cdf(x, mu=0.0, sigma=1.0):
     z = (x-mu)/sigma
     return 0.5 * erfc(-z/ np.sqrt(2))
 
+def normal_inverse_wishart_log_prob(gaussian):
+    """
+    Compute the log probability under a NIW prior for a Gaussian object
+    :param gaussian:
+    :return:
+    """
+    from scipy.stats import invwishart, multivariate_normal
+    lp = 0
+    lp += invwishart.logpdf(gaussian.sigma,
+                            gaussian.nu_0,
+                            gaussian.sigma_0)
+
+    # Compute log N(mu_0 | mu_0, Sigma / kappa_0)
+    lp += multivariate_normal.logpdf(gaussian.mu,
+                                     gaussian.mu_0,
+                                     gaussian.sigma / gaussian.kappa_0)
+
+    return lp
+
 def sample_truncnorm(mu=0, sigma=1, lb=-np.Inf, ub=np.Inf):
     """ Sample a truncated normal with the specified params
     """
