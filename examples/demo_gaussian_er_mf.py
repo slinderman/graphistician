@@ -4,7 +4,7 @@ Demo of an eigenmodel.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from graphistician.networks import GaussianErdosRenyiFixedSparsity
+from graphistician import GaussianErdosRenyiFixedSparsity
 
 
 try:

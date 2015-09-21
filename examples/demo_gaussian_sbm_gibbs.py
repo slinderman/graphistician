@@ -4,7 +4,7 @@ Demo of an eigenmodel.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from graphistician.stochastic_block_model import GaussianStochasticBlockModel
+from graphistician import GaussianStochasticBlockModel
 
 
 try:
@@ -22,7 +22,7 @@ def demo(seed=None):
     np.random.seed(seed)
 
     # Create an eigenmodel with N nodes and D-dimensional feature vectors
-    N = 100      # Number of nodes
+    N = 50      # Number of nodes
     C = 5       # Dimensionality of the feature space
     sbm_args = {"C": C}
     B = 2       # Dimensionality of the weights
@@ -36,14 +36,11 @@ def demo(seed=None):
     plt.ion()
     fig     = plt.figure()
     ax_true = fig.add_subplot(1,2,1, aspect="equal")
+    ax_test = fig.add_subplot(1,2,2, aspect="equal")
     true_model.plot(network, ax=ax_true)
 
     # Make another model to fit the data
     test_model = GaussianStochasticBlockModel(N, B, **sbm_args)
-    ax_test = fig.add_subplot(1,2,2, aspect="equal")
-    test_model.plot(network, ax=ax_test)
-
-    plt.pause(0.001)
 
     # Fit with Gibbs sampling
     N_samples = 100
@@ -56,7 +53,7 @@ def demo(seed=None):
         print ""
 
         # Update the test plot
-        if smpl % 1 == 0:
+        if smpl % 20 == 0:
             ax_test.cla()
             test_model.plot(network, ax=ax_test)
             plt.pause(0.001)
