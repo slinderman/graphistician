@@ -89,11 +89,16 @@ class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
 
         self.p = np.random.beta(tau1, tau0)
 
+        from scipy.stats import beta
+        self._beta_obj = beta(self.tau1, self.tau0)
+
+
         if tau1_self is not None and tau0_self is not None:
             self.self_connection = True
             self.tau1_self = tau1_self
             self.tau0_self = tau0_self
             self.p_self = np.random.beta(tau1_self, tau0_self)
+            self._self_beta_obj = beta(self.tau1_self, self.tau0_self)
         else:
             self.self_connection = False
 
@@ -109,11 +114,9 @@ class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         return np.random.rand(self.N, self.N) < self.P
 
     def log_prior(self):
-        from scipy.stats import beta
-
-        lp = beta(self.tau1, self.tau0).pdf(self.p)
+        lp = self._beta_obj.logpdf(self.p)
         if self.self_connection:
-            lp += beta(self.tau1_self, self.tau0_self).pdf(self.p_self)
+            lp += self._self_beta_obj.logpdf(self.p_self)
 
         return lp
 
