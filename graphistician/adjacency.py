@@ -3,6 +3,8 @@ Super simple adjacency models. We either have a Bernoulli model
 with fixed probability or a beta-Bernoulli model.
 """
 import numpy as np
+from scipy.stats import beta
+
 from abstractions import AdjacencyDistribution
 from internals.utils import logistic
 
@@ -89,16 +91,11 @@ class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
 
         self.p = np.random.beta(tau1, tau0)
 
-        from scipy.stats import beta
-        self._beta_obj = beta(self.tau1, self.tau0)
-
-
         if tau1_self is not None and tau0_self is not None:
             self.self_connection = True
             self.tau1_self = tau1_self
             self.tau0_self = tau0_self
             self.p_self = np.random.beta(tau1_self, tau0_self)
-            self._self_beta_obj = beta(self.tau1_self, self.tau0_self)
         else:
             self.self_connection = False
 
@@ -114,9 +111,9 @@ class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         return np.random.rand(self.N, self.N) < self.P
 
     def log_prior(self):
-        lp = self._beta_obj.logpdf(self.p)
+        lp = beta(self.tau1, self.tau0).logpdf(self.p)
         if self.self_connection:
-            lp += self._self_beta_obj.logpdf(self.p_self)
+            lp += beta(self.tau1_self, self.tau0_self).logpdf(self.p_self)
 
         return lp
 
@@ -403,7 +400,8 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
                  C=2,
                  c=None, m=None, pi=1.0,
                  p=None, tau0=1.0, tau1=1.0,
-                 allow_self_connections=True):
+                 allow_self_connections=True,
+                 special_case_self_conns=True):
         """
         Initialize SBM with parameters defined above.
         """
@@ -452,6 +450,11 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         else:
             self.p = np.random.beta(self.tau1, self.tau0, size=(self.C, self.C))
 
+        # Special case self-weights (along the diagonal)
+        self.special_case_self_conns = special_case_self_conns
+        if special_case_self_conns:
+            self.p_self = np.random.beta(self.tau1, self.tau0)
+
     @property
     def P(self):
         """
@@ -459,8 +462,11 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         :return:
         """
         P = self.p[np.ix_(self.c, self.c)]
+        if self.special_case_self_conns:
+            np.fill_diagonal(P, self.p_self)
         if not self.allow_self_connections:
             np.fill_diagonal(P, 0.0)
+
         return P
 
     def log_prior(self):
@@ -473,21 +479,18 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         from scipy.stats import dirichlet, beta
         lp = 0
         lp += dirichlet(self.pi).logpdf(self.m)
+
         lp += beta(self.tau1 * np.ones((self.C, self.C)),
                    self.tau0 * np.ones((self.C, self.C))).logpdf(self.p).sum()
+        if self.special_case_self_conns:
+            lp += beta(self.tau1, self.tau0).logpdf(self.p_self)
+
         lp += (np.log(self.m)[self.c]).sum()
         return lp
 
 
     def rvs(self, size=[]):
-        # Sample a network given m, c, p
-        A = np.zeros((self.N, self.N))
-
-        for c1 in xrange(self.C):
-            for c2 in xrange(self.C):
-                blk = (self.c==c1)[:,None] * (self.c==c2)[None,:]
-                A[blk] = np.random.rand(blk.sum()) < self.p[c1,c2]
-
+        A = np.random.rand(self.N, self.N) < self.P
         return A
 
     def sample_predictive_parameters(self):
@@ -552,28 +555,37 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         """
         Resample p given observations of the weights
         """
+        def _get_mask(c1, c2):
+            mask = ((self.c==c1)[:,None] * (self.c==c2)[None,:])
+            if self.special_case_self_conns:
+                mask &= True - np.eye(self.N, dtype=np.bool)
+            return mask
+
         for c1 in xrange(self.C):
             for c2 in xrange(self.C):
-
-                n_conns   = sum([A[np.ix_(self.c==c1, self.c==c2)].sum()
-                                 for A in As])
-                n_noconns = sum([(1 - A[np.ix_(self.c==c1, self.c==c2)]).sum()
-                                 for A in As])
-
-                if not self.allow_self_connections:
-                    # TODO: Account for self connections
-                    pass
+                mask = _get_mask(c1, c2)
+                n_conns   = sum([A[mask].sum() for A in As])
+                n_noconns = sum([(1 - A[mask]).sum() for A in As])
 
                 tau1 = self.tau1 + n_conns
                 tau0 = self.tau0 + n_noconns
                 self.p[c1,c2] = np.random.beta(tau1, tau0)
+
+        # Resample self connection probability
+        if self.special_case_self_conns:
+            mask = np.eye(self.N, dtype=np.bool)
+            n_conns   = sum([A[mask].sum() for A in As])
+            n_noconns = sum([(1 - A[mask]).sum() for A in As])
+
+            tau1 = self.tau1 + n_conns
+            tau0 = self.tau0 + n_noconns
+            self.p_self = np.random.beta(tau1, tau0)
 
     def resample_c(self, A):
         """
         Resample block assignments given the weighted adjacency matrix
         and the impulse response fits (if used)
         """
-        from scipy.stats import bernoulli
         from pybasicbayes.util.stats import sample_discrete_from_log
 
         if self.C == 1:
@@ -594,19 +606,24 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
                 for n2 in xrange(self.N):
                     cn2 = self.c[n2]
 
-                    if n2 != n1:
-                        # p(A[k,k'] | c)
-                        # lp[cn1] += bernoulli(self.p[cn1, cn2]).logpmf(A[n1,n2]).sum()
-                        lp[cn1] += A[n1,n2] * np.log(self.p[cn1,cn2]) + (1-A[n1,n2]) * np.log(1-self.p[cn1,cn2])
-
-                        # p(A[k',k] | c)
-                        # lp[cn1] += bernoulli(self.p[cn2, cn1]).logpmf(A[n2,n1]).sum()
-                        lp[cn1] += A[n2,n1] * np.log(self.p[cn2,cn1]) + (1-A[n2,n1]) * np.log(1-self.p[cn2,cn1])
+                    if n2 == n1:
+                        # If we are special casing the self connections then
+                        # we can just continue if n1==n2 since its weight has
+                        # no bearing on the cluster assignment
+                        if self.special_case_self_conns:
+                            continue
+                        else:
+                            lp[cn1] += A[n1,n1] * np.log(self.p[cn1,cn1]) + \
+                                       (1-A[n1,n1]) * np.log(1-self.p[cn1,cn1])
 
                     else:
-                        # Self connection
-                        # lp[cn1] += bernoulli(self.p[cn1, cn1]).logpmf(A[n1,n1]).sum()
-                        lp[cn1] += A[n1,n1] * np.log(self.p[cn1,cn1]) + (1-A[n1,n1]) * np.log(1-self.p[cn1,cn1])
+                        # p(An1,n2] | c)
+                        lp[cn1] += A[n1,n2] * np.log(self.p[cn1,cn2]) + \
+                                   (1-A[n1,n2]) * np.log(1-self.p[cn1,cn2])
+
+                        # p(A[n2,n1] | c)
+                        lp[cn1] += A[n2,n1] * np.log(self.p[cn2,cn1]) + \
+                                   (1-A[n2,n1]) * np.log(1-self.p[cn2,cn1])
 
             # Resample from lp
             self.c[n1] = sample_discrete_from_log(lp)

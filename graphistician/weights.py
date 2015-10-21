@@ -158,7 +158,7 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
 
     # TODO: Specify the self weight parameters in the constructor
     def __init__(self, N, B=1,
-                 C=2, pi=1.0,
+                 C=2, pi=10.0,
                  mu_0=None, Sigma_0=None, nu_0=None, kappa_0=None,
                  special_case_self_conns=True):
         """
@@ -360,20 +360,18 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
                     # If we are special casing the self connections then
                     # we can just continue if n1==n2 since its weight has
                     # no bearing on the cluster assignment
-                    if self.special_case_self_conns and n1 == n2:
-                        continue
+                    if n2 == n1:
+                        # Self connection
+                        if self.special_case_self_conns:
+                            continue
+                        lp[cn1] += self._gaussians[cn1][cn1].log_likelihood(W[n1,n1]).sum()
 
-                    if A[n1,n2]:
-                        if n2 != n1:
-                            # p(W[n1,n2] | c)
+                    else:
+                        # p(W[n1,n2] | c) and p(W[n2,n1] | c), only if there is a connection
+                        if A[n1,n2]:
                             lp[cn1] += self._gaussians[cn1][cn2].log_likelihood(W[n1,n2]).sum()
-
-                            # p(A[n2,n1] | c)
+                        if A[n2,n1]:
                             lp[cn1] += self._gaussians[cn2][cn1].log_likelihood(W[n2,n1]).sum()
-
-                        else:
-                            # Self connection
-                            lp[cn1] += self._gaussians[cn1][cn1].log_likelihood(W[n1,n1]).sum()
 
             # Resample from lp
             self.c[n1] = sample_discrete_from_log(lp)
