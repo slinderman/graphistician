@@ -135,6 +135,16 @@ class NIWGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         self._gaussian.resample(W[A_offdiag==1])
         self._self_gaussian.resample(W[A_ondiag==1])
 
+    def initialize_hypers(self, W):
+        mu_0 = W.mean(axis=(0,1))
+        sigma_0 = np.diag(W.var(axis=(0,1)))
+        self._gaussian.mu = mu_0
+        self._gaussian.sigma_0 = sigma_0
+
+        W_self = W[np.arange(self.N), np.arange(self.N)]
+        self._self_gaussian.mu_0 = W_self.mean(axis=0)
+        self._self_gaussian.sigma_0 = np.diag(W_self.var(axis=0))
+
 
 class LowRankGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
     """
@@ -243,6 +253,19 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
                 Sigma[n,n] = self._self_gaussian.sigma
 
         return Sigma
+
+    def initialize_hypers(self, W):
+        mu_0 = W.mean(axis=(0,1))
+        sigma_0 = np.diag(W.var(axis=(0,1)))
+        for c1 in xrange(self.C):
+            for c2 in xrange(self.C):
+                self._gaussians[c1][c2].mu = mu_0
+                self._gaussians[c1][c2].sigma_0 = sigma_0
+
+        if self.special_case_self_conns:
+            W_self = W[np.arange(self.N), np.arange(self.N)]
+            self._self_gaussian.mu_0 = W_self.mean(axis=0)
+            self._self_gaussian.sigma_0 = np.diag(W_self.var(axis=0))
 
     def log_prior(self):
         """

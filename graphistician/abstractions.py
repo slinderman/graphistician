@@ -42,6 +42,10 @@ class NetworkDistribution(Distribution):
     def rvs(self, *args, **kwargs):
         super(NetworkDistribution, self).rvs(*args, **kwargs)
 
+    def initialize_hypers(self, A, W):
+        self.adjacency.initialize_hypers(A)
+        self.weights.initialize_hypers(W)
+
     @abc.abstractmethod
     def sample_predictive_parameters(self):
         """
@@ -166,6 +170,8 @@ class AdjacencyDistribution(Distribution):
         lp = -np.log(M) + logsumexp(lps)
         return lp
 
+    def initialize_hypers(self, A):
+        pass
 
 class WeightDistribution(Distribution):
     """
@@ -206,6 +212,9 @@ class WeightDistribution(Distribution):
         samples of the predictive parameters
         """
         raise NotImplementedError
+
+    def initialize_hypers(self, W):
+        pass
 
 class GaussianWeightDistribution(WeightDistribution):
     """
