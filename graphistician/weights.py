@@ -139,13 +139,15 @@ class NIWGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         # self.B = W.shape[2]
         mu_0 = W.mean(axis=(0,1))
         sigma_0 = np.diag(W.var(axis=(0,1)))
-        self._gaussian.mu = mu_0
+        self._gaussian.mu_0 = mu_0
         self._gaussian.sigma_0 = sigma_0
+        self._gaussian.resample()
         # self._gaussian.nu_0 = self.B + 2
 
         W_self = W[np.arange(self.N), np.arange(self.N)]
         self._self_gaussian.mu_0 = W_self.mean(axis=0)
         self._self_gaussian.sigma_0 = np.diag(W_self.var(axis=0))
+        self._self_gaussian.resample()
         # self._self_gaussian.nu_0 = self.B + 2
 
 
@@ -262,13 +264,22 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         sigma_0 = np.diag(W.var(axis=(0,1)))
         for c1 in xrange(self.C):
             for c2 in xrange(self.C):
-                self._gaussians[c1][c2].mu = mu_0
+                self._gaussians[c1][c2].mu_0 = mu_0
                 self._gaussians[c1][c2].sigma_0 = sigma_0
+                self._gaussians[c1][c2].resample()
 
         if self.special_case_self_conns:
             W_self = W[np.arange(self.N), np.arange(self.N)]
             self._self_gaussian.mu_0 = W_self.mean(axis=0)
             self._self_gaussian.sigma_0 = np.diag(W_self.var(axis=0))
+            self._self_gaussian.resample()
+
+        # DEBUG
+        # print " WARNING " * 3
+        # print "Setting c to true value"
+        # self.c = np.zeros(self.N, dtype=np.int)
+        # self.c[16:] = 1
+
 
     def log_prior(self):
         """
@@ -368,6 +379,9 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         if self.C == 1:
             return
 
+        # import ipdb; ipdb.set_trace()
+        c_init = self.c.copy()
+
         # Sample each assignment in order
         for n1 in xrange(self.N):
             # Compute unnormalized log probs of each connection
@@ -401,6 +415,9 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
 
             # Resample from lp
             self.c[n1] = sample_discrete_from_log(lp)
+
+        # Count up the number of changes in c:
+        print "delta c: ", np.sum(1-(self.c==c_init))
 
     def resample_m(self):
         """
