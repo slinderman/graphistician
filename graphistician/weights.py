@@ -45,6 +45,13 @@ class FixedGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling)
 
         return Sig
 
+    def initialize_from_prior(self):
+        pass
+
+    def initialize_hypers(self):
+        pass
+
+
 
     def log_prior(self):
         return 0
@@ -107,6 +114,25 @@ class NIWGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
 
         return Sig
 
+    def initialize_from_prior(self):
+        self._gaussian.resample()
+        self._self_gaussian.resample()
+
+    def initialize_hypers(self, W):
+        # self.B = W.shape[2]
+        mu_0 = W.mean(axis=(0,1))
+        sigma_0 = np.diag(W.var(axis=(0,1)))
+        self._gaussian.mu_0 = mu_0
+        self._gaussian.sigma_0 = sigma_0
+        self._gaussian.resample()
+        # self._gaussian.nu_0 = self.B + 2
+
+        W_self = W[np.arange(self.N), np.arange(self.N)]
+        self._self_gaussian.mu_0 = W_self.mean(axis=0)
+        self._self_gaussian.sigma_0 = np.diag(W_self.var(axis=0))
+        self._self_gaussian.resample()
+        # self._self_gaussian.nu_0 = self.B + 2
+
     def log_prior(self):
         from graphistician.internals.utils import normal_inverse_wishart_log_prob
         lp = 0
@@ -134,21 +160,6 @@ class NIWGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         A_ondiag = A * np.eye(self.N)
         self._gaussian.resample(W[A_offdiag==1])
         self._self_gaussian.resample(W[A_ondiag==1])
-
-    def initialize_hypers(self, W):
-        # self.B = W.shape[2]
-        mu_0 = W.mean(axis=(0,1))
-        sigma_0 = np.diag(W.var(axis=(0,1)))
-        self._gaussian.mu_0 = mu_0
-        self._gaussian.sigma_0 = sigma_0
-        self._gaussian.resample()
-        # self._gaussian.nu_0 = self.B + 2
-
-        W_self = W[np.arange(self.N), np.arange(self.N)]
-        self._self_gaussian.mu_0 = W_self.mean(axis=0)
-        self._self_gaussian.sigma_0 = np.diag(W_self.var(axis=0))
-        self._self_gaussian.resample()
-        # self._self_gaussian.nu_0 = self.B + 2
 
 
 class LowRankGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
@@ -259,13 +270,24 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
 
         return Sigma
 
+    def initialize_from_prior(self):
+        self.m = np.random.dirichlet(self.pi)
+        self.c = np.random.choice(self.C, p=self.m, size=(self.N))
+
+        for c1 in xrange(self.C):
+            for c2 in xrange(self.C):
+                self._gaussians[c1][c2].resample()
+        if self.special_case_self_conns:
+            self._self_gaussian.resample()
+
     def initialize_hypers(self, W):
         mu_0 = W.mean(axis=(0,1))
         sigma_0 = np.diag(W.var(axis=(0,1)))
         for c1 in xrange(self.C):
             for c2 in xrange(self.C):
+                nu_0 = self._gaussians[c1][c2].nu_0
                 self._gaussians[c1][c2].mu_0 = mu_0
-                self._gaussians[c1][c2].sigma_0 = sigma_0
+                self._gaussians[c1][c2].sigma_0 = sigma_0 * (nu_0 - self.B - 1) / self.C
                 self._gaussians[c1][c2].resample()
 
         if self.special_case_self_conns:
@@ -275,11 +297,32 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
             self._self_gaussian.resample()
 
         # DEBUG
-        # print " WARNING " * 3
-        # print "Setting c to true value"
-        # self.c = np.zeros(self.N, dtype=np.int)
-        # self.c[16:] = 1
+        # print%cpaste.c[16:] = 1
 
+    def _get_mask(self, A, c1, c2):
+            mask = ((self.c==c1)[:,None] * (self.c==c2)[None,:])
+            mask &= A.astype(np.bool)
+            if self.special_case_self_conns:
+                mask &= True - np.eye(self.N, dtype=np.bool)
+
+            return mask
+
+    def log_likelihood(self, (A,W)):
+        N = self.N
+        assert A.shape == (N,N)
+        assert W.shape == (N,N,self.B)
+
+        ll = 0
+        for c1 in xrange(self.C):
+            for c2 in xrange(self.C):
+                mask = self._get_mask(A, c1, c2)
+                ll += self._gaussians[c1][c2].log_likelihood(W[mask]).sum()
+
+        if self.special_case_self_conns:
+            mask = np.eye(self.N).astype(np.bool) & A.astype(np.bool)
+            ll += self._self_gaussian.log_likelihood(W[mask]).sum()
+
+        return ll
 
     def log_prior(self):
         """
@@ -352,17 +395,10 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         Resample p given observations of the weights
         """
         Abool = A.astype(np.bool)
-        def _get_mask(c1, c2):
-            mask = ((self.c==c1)[:,None] * (self.c==c2)[None,:])
-            mask &= Abool
-            if self.special_case_self_conns:
-                mask &= True - np.eye(self.N, dtype=np.bool)
-
-            return mask
 
         for c1 in xrange(self.C):
             for c2 in xrange(self.C):
-                mask = _get_mask(c1, c2)
+                mask = self._get_mask(Abool, c1, c2)
                 self._gaussians[c1][c2].resample(W[mask])
 
         # Resample self connection
@@ -379,8 +415,53 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         if self.C == 1:
             return
 
-        # import ipdb; ipdb.set_trace()
+        Abool = A.astype(np.bool)
         c_init = self.c.copy()
+
+        def _evaluate_lkhd_slow(n1, cn1):
+            ll = 0
+            # Compute probability for each incoming and outgoing
+            for n2 in xrange(self.N):
+                cn2 = self.c[n2]
+
+                # If we are special casing the self connections then
+                # we can just continue if n1==n2 since its weight has
+                # no bearing on the cluster assignment
+                if n2 == n1:
+                    # Self connection
+                    if self.special_case_self_conns:
+                        continue
+                    ll += self._gaussians[cn1][cn1].log_likelihood(W[n1,n1]).sum()
+
+                else:
+                    # p(W[n1,n2] | c) and p(W[n2,n1] | c), only if there is a connection
+                    if A[n1,n2]:
+                        ll += self._gaussians[cn1][cn2].log_likelihood(W[n1,n2]).sum()
+                    if A[n2,n1]:
+                        ll += self._gaussians[cn2][cn1].log_likelihood(W[n2,n1]).sum()
+
+            return ll
+
+        def _evaluate_lkhd(n1, cn1):
+            chat = self.c.copy()
+            chat[n1] = cn1
+
+            # Compute log lkhd for each pair of blocks
+            ll = 0
+            for c2 in xrange(self.C):
+                # Outgoing connections
+                out_mask = (chat == c2) & Abool[n1,:]
+                if self.special_case_self_conns:
+                    out_mask[n1] = False
+                ll += self._gaussians[cn1][c2].log_likelihood(W[n1,out_mask]).sum()
+
+                # Handle incoming connections
+                # Exclude self connection since it would have been handle above
+                in_mask = (chat == c2) & Abool[:,n1]
+                in_mask[n1] = False
+                ll += self._gaussians[c2][cn1].log_likelihood(W[in_mask,n1]).sum()
+
+            return ll
 
         # Sample each assignment in order
         for n1 in xrange(self.N):
@@ -392,32 +473,16 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
 
             # Likelihood from network
             for cn1 in xrange(self.C):
-
-                # Compute probability for each incoming and outgoing
-                for n2 in xrange(self.N):
-                    cn2 = self.c[n2]
-
-                    # If we are special casing the self connections then
-                    # we can just continue if n1==n2 since its weight has
-                    # no bearing on the cluster assignment
-                    if n2 == n1:
-                        # Self connection
-                        if self.special_case_self_conns:
-                            continue
-                        lp[cn1] += self._gaussians[cn1][cn1].log_likelihood(W[n1,n1]).sum()
-
-                    else:
-                        # p(W[n1,n2] | c) and p(W[n2,n1] | c), only if there is a connection
-                        if A[n1,n2]:
-                            lp[cn1] += self._gaussians[cn1][cn2].log_likelihood(W[n1,n2]).sum()
-                        if A[n2,n1]:
-                            lp[cn1] += self._gaussians[cn2][cn1].log_likelihood(W[n2,n1]).sum()
+                ll = _evaluate_lkhd(n1, cn1)
+                # ll_slow = _evaluate_lkhd_slow(n1, cn1)
+                # assert np.allclose(ll,ll_slow)
+                lp[cn1] += ll
 
             # Resample from lp
             self.c[n1] = sample_discrete_from_log(lp)
 
         # Count up the number of changes in c:
-        print "delta c: ", np.sum(1-(self.c==c_init))
+        # print "delta c: ", np.sum(1-(self.c==c_init))
 
     def resample_m(self):
         """

@@ -46,6 +46,10 @@ class NetworkDistribution(Distribution):
         self.adjacency.initialize_hypers(A)
         self.weights.initialize_hypers(W)
 
+    def initialize_from_prior(self):
+        self.adjacency.initialize_from_prior()
+        self.weights.initialize_from_prior()
+
     @abc.abstractmethod
     def sample_predictive_parameters(self):
         """
@@ -119,6 +123,13 @@ class AdjacencyDistribution(Distribution):
         return np.random.rand(*P.shape) < P
 
     @abc.abstractmethod
+    def initialize_from_prior(self):
+        raise NotImplementedError
+
+    def initialize_hypers(self, A):
+        pass
+
+    @abc.abstractmethod
     def sample_predictive_parameters(self):
         """
         Sample a predictive set of parameters for a new row and column of A
@@ -170,8 +181,6 @@ class AdjacencyDistribution(Distribution):
         lp = -np.log(M) + logsumexp(lps)
         return lp
 
-    def initialize_hypers(self, A):
-        pass
 
 class WeightDistribution(Distribution):
     """
@@ -181,6 +190,13 @@ class WeightDistribution(Distribution):
 
     def __init__(self, N):
         self.N = N
+
+    @abc.abstractmethod
+    def initialize_from_prior(self):
+        raise NotImplementedError
+
+    def initialize_hypers(self, W):
+        pass
 
     @abc.abstractmethod
     def sample_predictive_parameters(self):
@@ -213,8 +229,6 @@ class WeightDistribution(Distribution):
         """
         raise NotImplementedError
 
-    def initialize_hypers(self, W):
-        pass
 
 class GaussianWeightDistribution(WeightDistribution):
     """

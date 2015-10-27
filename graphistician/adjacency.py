@@ -24,6 +24,12 @@ class FixedAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     def P(self):
         return self._P
 
+    def initialize_from_prior(self):
+        pass
+
+    def initialize_hypers(self, A):
+        pass
+
     def log_prior(self):
         return 0
 
@@ -71,6 +77,12 @@ class BernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     def log_prior(self):
         return 0
 
+    def initialize_from_prior(self):
+        pass
+
+    def initialize_hypers(self, A):
+        pass
+
     def resample(self, data=[]):
         pass
 
@@ -106,6 +118,14 @@ class BetaBernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         if self.self_connection:
             np.fill_diagonal(P, self.p_self)
         return P
+
+    def initialize_from_prior(self):
+        self.p = np.random.beta(self.tau1, self.tau0)
+        if self.self_connection:
+            self.p_self = np.random.beta(self.tau1_self, self.tau0_self)
+
+    def initialize_hypers(self, A):
+        pass
 
     def rvs(self, size=[]):
         return np.random.rand(self.N, self.N) < self.P
@@ -180,6 +200,14 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     def P(self):
         P = logistic(self.D)
         return P
+
+    def initialize_from_prior(self):
+        self.mu_0 = np.random.randn()
+        self.mu_self = np.random.randn()
+        self.L = np.sqrt(self.sigma) * np.random.randn(self.N, self.dim)
+
+    def initialize_hypers(self, A):
+        pass
 
     def log_prior(self):
         """
@@ -468,6 +496,14 @@ class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
             np.fill_diagonal(P, 0.0)
 
         return P
+
+    def initialize_from_prior(self):
+        self.p = np.random.beta(self.tau1, self.tau0, size=(self.C, self.C))
+        if self.special_case_self_conns:
+            self.p_self = np.random.beta(self.tau1, self.tau0)
+
+    def initialize_hypers(self, A):
+        pass
 
     def log_prior(self):
         """
