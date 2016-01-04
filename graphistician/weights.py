@@ -524,7 +524,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         if nu_0 is None:
             nu_0 = B + 2
 
-        self.cov = GaussianFixedMean(mu=np.zeros(B), lmbda_0=Sigma_0, nu_0=nu_0)
+        self.cov = GaussianFixedMean(mu=np.zeros(B), sigma=np.eye(self.B), lmbda_0=Sigma_0, nu_0=nu_0)
 
         # Special case self-weights (along the diagonal)
         self._self_gaussian = Gaussian(mu_0=mu_self*np.ones(B),
@@ -533,12 +533,15 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
                                        kappa_0=1.0)
 
     @property
+    def D(self):
+        return ((self.L[:, None, :] - self.L[None, :, :]) ** 2).sum(2)
+
+    @property
     def Mu(self):
-        Mu = self.a * ((self.L[:, None, :] - self.L[None, :, :]) ** 2).sum(2)
-        Mu += self.b
+        Mu = self.a * self.D + self.b
         Mu = np.tile(Mu[:,:,None], (1,1,self.B))
         for n in xrange(self.N):
-            Mu[n,n,:] = self.mu_self
+            Mu[n,n,:] = self._self_gaussian.mu
 
         return Mu
 
@@ -553,8 +556,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         return Sig
 
     def initialize_from_prior(self):
-        # self.b = np.random.randn()
-        # self.mu_self = np.random.randn()
+        # TODO: Initialize a and b?
         self.L = np.random.randn(self.N, self.dim)
         self.cov.resample()
 
@@ -574,7 +576,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         from scipy.stats import norm
         lp += norm.logpdf(self.a, 0, 1)
         lp += norm.logpdf(self.b, 0, 1)
-        lp += norm.logpdf(self.L, 0, 1.0).sum()
+        lp += norm.logpdf(self.L, 0, 1).sum()
 
         lp += inverse_wishart_log_prob(self.cov)
         lp += normal_inverse_wishart_log_prob(self._self_gaussian)
@@ -590,35 +592,41 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         :param A:
         :return:
         """
+        assert self.B == 1
         import autograd.numpy as anp
-        import autograd.scipy.stats.multivariate_normal as mvn
+        # import autograd.scipy.stats.multivariate_normal as mvn
+        # import ipdb; ipdb.set_trace()
 
         # Compute pairwise distance
         L1 = anp.reshape(L,(self.N,1,self.dim))
         L2 = anp.reshape(L,(1,self.N,self.dim))
         Mu = a * anp.sum((L1-L2)**2, axis=2) + b
 
-        # Mu += (self._self_gaussian.mu - b) * anp.diag(self.N)
+        Aoff = A * (1-anp.eye(self.N))
+        X = (W - Mu[:,:,None]) * Aoff[:,:,None]
 
-        Sig = self.cov.sigma
-        # Sig_self = self._self_gaussian.sigma
+        # Get the covariance and precision
+        Sig = self.cov.sigma[0,0]
+        Lmb = 1./Sig
 
-        lp = 0
-        for m in xrange(self.N):
-            for n in xrange(self.N):
-                if A[m,n]:
-                    if n != m:
-                        lp += mvn.logpdf(W[m,n],
-                                         Mu[m,n] * anp.ones(self.B),
-                                         Sig)
-                    # else:
-                    #     lp += mvn.logpdf(W[m,n],
-                    #                      Mu[m,n] * anp.ones(self.B),
-                    #                      Sig_self)
+        # import ipdb; ipdb.set_trace()
+        lp = anp.sum(-0.5 * X**2 / Lmb)
+
+        # lp = 0
+        # for m in xrange(self.N):
+        #     for n in xrange(self.N):
+        #         lp += -0.5 * anp.dot(X[m,n], anp.dot(Lmb, X[m,n]))
+                # lp += mvn.logpdf(W[m,n],
+                #                  Mu[m,n] * anp.ones(self.B),
+                #                  Sig)
+                # else:
+                #     lp += mvn.logpdf(W[m,n],
+                #                      Mu[m,n] * anp.ones(self.B),
+                #                      Sig_self)
 
 
         # Log prior of L under spherical Gaussian prior
-        lp = -0.5 * anp.sum(L * L)
+        lp += -0.5 * anp.sum(L * L)
 
         # Log prior of mu0 under standardGaussian prior
         lp += -0.5 * a ** 2
@@ -626,27 +634,31 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
 
         return lp
 
-
-    def rvs(self, size=[]):
-        raise NotImplementedError
+    # def rvs(self, size=[]):
+    #     # Sample a network given m, c, p
+    #     W = np.zeros((self.N, self.N, self.B))
+    #
+    #
+    #     return W
 
     def sample_predictive_parameters(self):
-        Lext = \
-            np.vstack((self.L, np.sqrt(self.sigma) * np.random.randn(1, self.dim)))
-
-        D = -((Lext[:,None,:] - Lext[None,:,:])**2).sum(2)
-        D += self.b
-        D += self.mu_self * np.eye(self.N+1)
-
-        P = logistic(D)
-        Prow = P[-1,:]
-        Pcol = P[:,-1]
-
-        return Prow, Pcol
+        raise NotImplementedError
+        # Lext = \
+        #     np.vstack((self.L, np.sqrt(self.sigma) * np.random.randn(1, self.dim)))
+        #
+        # D = -((Lext[:,None,:] - Lext[None,:,:])**2).sum(2)
+        # D += self.b
+        # D += self.mu_self * np.eye(self.N+1)
+        #
+        # P = logistic(D)
+        # Prow = P[-1,:]
+        # Pcol = P[:,-1]
+        # return Prow, Pcol
 
     def resample(self, (A,W)):
         self._resample_L(A, W)
         self._resample_A_b(A, W)
+        # self._resample_cov(A, W)
         self._resample_self_gaussian(A, W)
 
     def _resample_L(self, A, W):
@@ -659,6 +671,8 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
 
         lp  = lambda L: self._hmc_log_probability(L, self.a, self.b, A, W)
         dlp = grad(lp)
+
+        # import ipdb; ipdb.set_trace()
 
         stepsz = 0.005
         nsteps = 10
@@ -686,10 +700,70 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
     def _resample_cov(self, A, W):
         # Resample covariance matrix
         Mu = self.Mu
-        mask = (1-np.eye(self.N, dtype=np.bool)) & A.astype(np.bool)
+        mask = (True-np.eye(self.N, dtype=np.bool)) & A.astype(np.bool)
+        import ipdb; ipdb.set_trace()
         self.cov.resample(W[mask] - Mu[mask])
 
     def _resample_self_gaussian(self, A, W):
         # Resample self connection
         mask = np.eye(self.N, dtype=np.bool) & A.astype(np.bool)
         self._self_gaussian.resample(W[mask])
+
+    def plot(self, A, W, ax=None, L_true=None):
+        """
+        If D==2, plot the embedded nodes and the connections between them
+
+        :param L_true:  If given, rotate the inferred features to match F_true
+        :return:
+        """
+
+        import matplotlib.pyplot as plt
+
+        # Color the weights by the
+        import matplotlib.cm as cm
+        cmap = cm.get_cmap("RdBu")
+        W_lim = abs(W[:,:,0]).max()
+        W_rel = (W[:,:,0] - (-W_lim)) / (2*W_lim)
+
+        assert self.dim==2, "Can only plot for D==2"
+
+        if ax is None:
+            fig = plt.figure()
+            ax  = fig.add_subplot(111, aspect="equal")
+
+        # If true locations are given, rotate L to match L_true
+        L = self.L
+        if L_true is not None:
+            from graphistician.internals.utils import compute_optimal_rotation
+            R = compute_optimal_rotation(self.L, L_true)
+            L = L.dot(R)
+
+        # Scatter plot the node embeddings
+        # Plot the edges between nodes
+        # import ipdb; ipdb.set_trace()
+        for n1 in xrange(self.N):
+            for n2 in xrange(self.N):
+                if A[n1,n2]:
+                    ax.plot([L[n1,0], L[n2,0]],
+                            [L[n1,1], L[n2,1]],
+                            '-', color=cmap(W_rel[n1,n2]),
+                            lw=1.0)
+        ax.plot(L[:,0], L[:,1], 's', color='k', markerfacecolor='k', markeredgecolor='k')
+
+        # Get extreme feature values
+        b = np.amax(abs(L)) + L[:].std() / 2.0
+
+        # Plot grids for origin
+        ax.plot([0,0], [-b,b], ':k', lw=0.5)
+        ax.plot([-b,b], [0,0], ':k', lw=0.5)
+
+        # Set the limits
+        ax.set_xlim([-b,b])
+        ax.set_ylim([-b,b])
+
+        # Labels
+        ax.set_xlabel('Latent Dimension 1')
+        ax.set_ylabel('Latent Dimension 2')
+        plt.show()
+
+        return ax

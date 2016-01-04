@@ -47,6 +47,12 @@ class CompleteAdjacencyDistribution(FixedAdjacencyDistribution):
     def sample_predictive_parameters(self):
         return np.ones(self.N+1), np.ones(self.N+1)
 
+    def log_likelihood(self, A):
+        if np.all(A==1):
+            return 0
+        else:
+            return -np.inf
+
 
 class EmptyAdjacencyDistribution(FixedAdjacencyDistribution):
     def __init__(self, N):
@@ -285,15 +291,6 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
 
         return Prow, Pcol
 
-    def compute_optimal_rotation(self, L_true):
-        """
-        Find a rotation matrix R such that F_inf * R ~= F_true
-        :return:
-        """
-        from scipy.linalg import orthogonal_procrustes
-        R = orthogonal_procrustes(self.L, L_true)[0]
-        return R
-
     def plot(self, A, ax=None, color='k', L_true=None, lmbda_true=None):
         """
         If D==2, plot the embedded nodes and the connections between them
@@ -313,7 +310,8 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         # If true locations are given, rotate L to match L_true
         L = self.L
         if L_true is not None:
-            R = self.compute_optimal_rotation(L_true)
+            from graphistician.internals.utils import compute_optimal_rotation
+            R = compute_optimal_rotation(self.L, L_true)
             L = L.dot(R)
 
         # Scatter plot the node embeddings

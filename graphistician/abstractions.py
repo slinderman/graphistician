@@ -269,7 +269,7 @@ class GaussianWeightDistribution(WeightDistribution):
                 if A[m,n]:
                     # x = W[m,n] - Mu[m,n]
                     # ll += -0.5 * x.dot(np.linalg.solve(Sig[m,n], x))
-                    ll += multivariate_normal(Mu[m,n], Sig[m,n]).pdf(W[m,n])
+                    ll += multivariate_normal(Mu[m,n], Sig[m,n]).logpdf(W[m,n])
 
         return ll
 

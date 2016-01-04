@@ -27,7 +27,7 @@ def inverse_wishart_log_prob(gaussian):
     lp = 0
     lp += invwishart.logpdf(gaussian.sigma,
                             gaussian.nu_0,
-                            gaussian.lambda_0)
+                            gaussian.lmbda_0)
 
     return lp
 
@@ -100,3 +100,11 @@ def expected_truncnorm(mu=0, sigma=1.0, lb=-np.Inf, ub=np.Inf):
     E = mu + (normal_pdf(alpha) - normal_pdf(beta)) / Z * sigma
     return E
 
+def compute_optimal_rotation(L, L_true):
+        """
+        Find a rotation matrix R such that F_inf * R ~= F_true
+        :return:
+        """
+        from scipy.linalg import orthogonal_procrustes
+        R = orthogonal_procrustes(L, L_true)[0]
+        return R
