@@ -16,6 +16,21 @@ def normal_cdf(x, mu=0.0, sigma=1.0):
     z = (x-mu)/sigma
     return 0.5 * erfc(-z/ np.sqrt(2))
 
+def inverse_wishart_log_prob(gaussian):
+    """
+    Compute the log probability under a IW prior for a
+    GaussianFixedMean object
+    :param gaussian:
+    :return:
+    """
+    from scipy.stats import invwishart
+    lp = 0
+    lp += invwishart.logpdf(gaussian.sigma,
+                            gaussian.nu_0,
+                            gaussian.lambda_0)
+
+    return lp
+
 def normal_inverse_wishart_log_prob(gaussian):
     """
     Compute the log probability under a NIW prior for a Gaussian object

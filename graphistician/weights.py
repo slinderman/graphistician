@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from pybasicbayes.distributions import Gaussian
+from pybasicbayes.distributions import Gaussian, GaussianFixedMean
 from pybasicbayes.abstractions import GibbsSampling
 
 from abstractions import GaussianWeightDistribution
@@ -296,8 +296,12 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
             self._self_gaussian.sigma_0 = np.diag(W_self.var(axis=0))
             self._self_gaussian.resample()
 
-        # DEBUG
-        # print%cpaste.c[16:] = 1
+        # Cluster the neurons based on their rows and columns
+        from sklearn.cluster import KMeans
+        features = np.hstack((W[:,:,0], W[:,:,0].T))
+        km = KMeans(n_clusters=self.C)
+        km.fit(features)
+        self.c = km.labels_.astype(np.int)
 
     def _get_mask(self, A, c1, c2):
             mask = ((self.c==c1)[:,None] * (self.c==c2)[None,:])
@@ -490,3 +494,202 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         """
         pi = self.pi + np.bincount(self.c, minlength=self.C)
         self.m = np.random.dirichlet(pi)
+
+
+
+class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
+    """
+    l_n ~ N(0, sigma^2 I)
+    W_{n', n} ~ N(A * ||l_{n'} - l_{n}||_2^2 + b, ) for n' != n
+    """
+
+    def __init__(self, N, B=1, dim=2,
+                 a=1.0, b=0.0,
+                 Sigma_0=None, nu_0=None,
+                 mu_self=0.0):
+        """
+        Initialize SBM with parameters defined above.
+        """
+        super(LatentDistanceGaussianWeightDistribution, self).__init__(N)
+        self.B = B
+        self.dim = dim
+
+        self.a = a
+        self.b = b
+        self.L = np.random.randn(N,dim)
+
+        if Sigma_0 is None:
+            Sigma_0 = np.eye(B)
+
+        if nu_0 is None:
+            nu_0 = B + 2
+
+        self.cov = GaussianFixedMean(mu=np.zeros(B), lmbda_0=Sigma_0, nu_0=nu_0)
+
+        # Special case self-weights (along the diagonal)
+        self._self_gaussian = Gaussian(mu_0=mu_self*np.ones(B),
+                                       sigma_0=Sigma_0,
+                                       nu_0=nu_0,
+                                       kappa_0=1.0)
+
+    @property
+    def Mu(self):
+        Mu = self.a * ((self.L[:, None, :] - self.L[None, :, :]) ** 2).sum(2)
+        Mu += self.b
+        Mu = np.tile(Mu[:,:,None], (1,1,self.B))
+        for n in xrange(self.N):
+            Mu[n,n,:] = self.mu_self
+
+        return Mu
+
+    @property
+    def Sigma(self):
+        sig = self.cov.sigma
+        Sig = np.tile(sig[None,None,:,:], (self.N, self.N,1,1))
+
+        for n in xrange(self.N):
+            Sig[n,n,:,:] = self._self_gaussian.sigma
+
+        return Sig
+
+    def initialize_from_prior(self):
+        # self.b = np.random.randn()
+        # self.mu_self = np.random.randn()
+        self.L = np.random.randn(self.N, self.dim)
+        self.cov.resample()
+
+    def initialize_hypers(self, A):
+        pass
+
+    def log_prior(self):
+        """
+        Compute the prior probability of F, mu0, and lmbda
+        """
+        from graphistician.internals.utils import \
+            normal_inverse_wishart_log_prob, \
+            inverse_wishart_log_prob
+        lp = 0
+
+        # Log prior of F under spherical Gaussian prior
+        from scipy.stats import norm
+        lp += norm.logpdf(self.a, 0, 1)
+        lp += norm.logpdf(self.b, 0, 1)
+        lp += norm.logpdf(self.L, 0, 1.0).sum()
+
+        lp += inverse_wishart_log_prob(self.cov)
+        lp += normal_inverse_wishart_log_prob(self._self_gaussian)
+
+        # Log prior of mu_0 and mu_self
+        return lp
+
+    def _hmc_log_probability(self, L, a, b, A, W):
+        """
+        Compute the log probability as a function of L.
+        This allows us to take the gradients wrt L using autograd.
+        :param L:
+        :param A:
+        :return:
+        """
+        import autograd.numpy as anp
+        import autograd.scipy.stats.multivariate_normal as mvn
+
+        # Compute pairwise distance
+        L1 = anp.reshape(L,(self.N,1,self.dim))
+        L2 = anp.reshape(L,(1,self.N,self.dim))
+        Mu = a * anp.sum((L1-L2)**2, axis=2) + b
+
+        # Mu += (self._self_gaussian.mu - b) * anp.diag(self.N)
+
+        Sig = self.cov.sigma
+        # Sig_self = self._self_gaussian.sigma
+
+        lp = 0
+        for m in xrange(self.N):
+            for n in xrange(self.N):
+                if A[m,n]:
+                    if n != m:
+                        lp += mvn.logpdf(W[m,n],
+                                         Mu[m,n] * anp.ones(self.B),
+                                         Sig)
+                    # else:
+                    #     lp += mvn.logpdf(W[m,n],
+                    #                      Mu[m,n] * anp.ones(self.B),
+                    #                      Sig_self)
+
+
+        # Log prior of L under spherical Gaussian prior
+        lp = -0.5 * anp.sum(L * L)
+
+        # Log prior of mu0 under standardGaussian prior
+        lp += -0.5 * a ** 2
+        lp += -0.5 * b ** 2
+
+        return lp
+
+
+    def rvs(self, size=[]):
+        raise NotImplementedError
+
+    def sample_predictive_parameters(self):
+        Lext = \
+            np.vstack((self.L, np.sqrt(self.sigma) * np.random.randn(1, self.dim)))
+
+        D = -((Lext[:,None,:] - Lext[None,:,:])**2).sum(2)
+        D += self.b
+        D += self.mu_self * np.eye(self.N+1)
+
+        P = logistic(D)
+        Prow = P[-1,:]
+        Pcol = P[:,-1]
+
+        return Prow, Pcol
+
+    def resample(self, (A,W)):
+        self._resample_L(A, W)
+        self._resample_A_b(A, W)
+        self._resample_self_gaussian(A, W)
+
+    def _resample_L(self, A, W):
+        """
+        Resample the locations given A
+        :return:
+        """
+        from autograd import grad
+        from hips.inference.hmc import hmc
+
+        lp  = lambda L: self._hmc_log_probability(L, self.a, self.b, A, W)
+        dlp = grad(lp)
+
+        stepsz = 0.005
+        nsteps = 10
+        self.L = hmc(lp, dlp, stepsz, nsteps, self.L.copy(),
+                     negative_log_prob=False)
+
+    def _resample_A_b(self, A, W):
+        """
+        Resample the locations given A
+        :return:
+        """
+        from autograd import grad
+        from hips.inference.hmc import hmc
+
+        lp  = lambda (a,b): self._hmc_log_probability(self.L, a, b, A, W)
+        dlp = grad(lp)
+
+        stepsz = 0.005
+        nsteps = 10
+        a,b = hmc(lp, dlp, stepsz, nsteps,
+                   np.array([self.a, self.b]),
+                   negative_log_prob=False)
+        self.a, self.b = float(a), float(b)
+
+    def _resample_cov(self, A, W):
+        # Resample covariance matrix
+        Mu = self.Mu
+        mask = (1-np.eye(self.N, dtype=np.bool)) & A.astype(np.bool)
+        self.cov.resample(W[mask] - Mu[mask])
+
+    def _resample_self_gaussian(self, A, W):
+        # Resample self connection
+        mask = np.eye(self.N, dtype=np.bool) & A.astype(np.bool)
+        self._self_gaussian.resample(W[mask])
