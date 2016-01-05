@@ -658,7 +658,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
     def resample(self, (A,W)):
         self._resample_L(A, W)
         self._resample_A_b(A, W)
-        # self._resample_cov(A, W)
+        self._resample_cov(A, W)
         self._resample_self_gaussian(A, W)
 
     def _resample_L(self, A, W):
@@ -701,7 +701,6 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         # Resample covariance matrix
         Mu = self.Mu
         mask = (True-np.eye(self.N, dtype=np.bool)) & A.astype(np.bool)
-        import ipdb; ipdb.set_trace()
         self.cov.resample(W[mask] - Mu[mask])
 
     def _resample_self_gaussian(self, A, W):
@@ -732,15 +731,14 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
             ax  = fig.add_subplot(111, aspect="equal")
 
         # If true locations are given, rotate L to match L_true
-        L = self.L
+        L = self.L.copy()
         if L_true is not None:
             from graphistician.internals.utils import compute_optimal_rotation
-            R = compute_optimal_rotation(self.L, L_true)
+            R = compute_optimal_rotation(L, L_true)
             L = L.dot(R)
 
         # Scatter plot the node embeddings
         # Plot the edges between nodes
-        # import ipdb; ipdb.set_trace()
         for n1 in xrange(self.N):
             for n2 in xrange(self.N):
                 if A[n1,n2]:
