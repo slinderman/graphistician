@@ -505,7 +505,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
 
     def __init__(self, N, B=1, dim=2,
                  a=1.0, b=0.0,
-                 Sigma_0=None, nu_0=None,
+                 sigma=None, Sigma_0=None, nu_0=None,
                  mu_self=0.0):
         """
         Initialize SBM with parameters defined above.
@@ -524,7 +524,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         if nu_0 is None:
             nu_0 = B + 2
 
-        self.cov = GaussianFixedMean(mu=np.zeros(B), sigma=np.eye(self.B), lmbda_0=Sigma_0, nu_0=nu_0)
+        self.cov = GaussianFixedMean(mu=np.zeros(B), sigma=sigma, lmbda_0=Sigma_0, nu_0=nu_0)
 
         # Special case self-weights (along the diagonal)
         self._self_gaussian = Gaussian(mu_0=mu_self*np.ones(B),
