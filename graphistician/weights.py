@@ -504,7 +504,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
     """
 
     def __init__(self, N, B=1, dim=2,
-                 a=1.0, b=0.0,
+                 a=-0.05, b=0.5,
                  sigma=None, Sigma_0=None, nu_0=None,
                  mu_self=0.0):
         """
@@ -534,6 +534,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
 
     @property
     def D(self):
+        # return np.sqrt(((self.L[:, None, :] - self.L[None, :, :]) ** 2).sum(2))
         return ((self.L[:, None, :] - self.L[None, :, :]) ** 2).sum(2)
 
     @property
@@ -560,8 +561,9 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         self.L = np.random.randn(self.N, self.dim)
         self.cov.resample()
 
-    def initialize_hypers(self, A):
-        pass
+    def initialize_hypers(self, W):
+        # Optimize the initial locations
+        self._optimize_L(np.ones((self.N,self.N)), W)
 
     def log_prior(self):
         """
@@ -594,12 +596,11 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         """
         assert self.B == 1
         import autograd.numpy as anp
-        # import autograd.scipy.stats.multivariate_normal as mvn
-        # import ipdb; ipdb.set_trace()
 
         # Compute pairwise distance
         L1 = anp.reshape(L,(self.N,1,self.dim))
         L2 = anp.reshape(L,(1,self.N,self.dim))
+        # Mu = a * anp.sqrt(anp.sum((L1-L2)**2, axis=2)) + b
         Mu = a * anp.sum((L1-L2)**2, axis=2) + b
 
         Aoff = A * (1-anp.eye(self.N))
@@ -610,7 +611,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         Lmb = 1./Sig
 
         # import ipdb; ipdb.set_trace()
-        lp = anp.sum(-0.5 * X**2 / Lmb)
+        lp = anp.sum(-0.5 * X**2 * Lmb)
 
         # lp = 0
         # for m in xrange(self.N):
@@ -634,13 +635,6 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
 
         return lp
 
-    # def rvs(self, size=[]):
-    #     # Sample a network given m, c, p
-    #     W = np.zeros((self.N, self.N, self.B))
-    #
-    #
-    #     return W
-
     def sample_predictive_parameters(self):
         raise NotImplementedError
         # Lext = \
@@ -657,7 +651,8 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
 
     def resample(self, (A,W)):
         self._resample_L(A, W)
-        self._resample_A_b(A, W)
+        self._resample_a_and_b(A, W)
+        # self._resample_b(A, W)
         self._resample_cov(A, W)
         self._resample_self_gaussian(A, W)
 
@@ -672,16 +667,35 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         lp  = lambda L: self._hmc_log_probability(L, self.a, self.b, A, W)
         dlp = grad(lp)
 
-        # import ipdb; ipdb.set_trace()
-
         stepsz = 0.005
         nsteps = 10
+        # lp0 = lp(self.L)
         self.L = hmc(lp, dlp, stepsz, nsteps, self.L.copy(),
                      negative_log_prob=False)
+        # lpf = lp(self.L)
+        # print "diff lp: ", (lpf - lp0)
 
-    def _resample_A_b(self, A, W):
+
+    def _optimize_L(self, A, W):
         """
         Resample the locations given A
+        :return:
+        """
+        import autograd.numpy as anp
+        from autograd import grad
+        from scipy.optimize import minimize
+
+        lp  = lambda Lflat: -self._hmc_log_probability(anp.reshape(Lflat, (self.N,2)),
+                                                       self.a, self.b, A, W)
+        dlp = grad(lp)
+
+        res = minimize(lp, np.ravel(self.L), jac=dlp, method="bfgs")
+
+        self.L = np.reshape(res.x, (self.N,2))
+
+    def _resample_a_and_b(self, A, W):
+        """
+        Resample the distance dependence parameters
         :return:
         """
         from autograd import grad
@@ -690,12 +704,31 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         lp  = lambda (a,b): self._hmc_log_probability(self.L, a, b, A, W)
         dlp = grad(lp)
 
-        stepsz = 0.005
+        stepsz = 0.0001
         nsteps = 10
         a,b = hmc(lp, dlp, stepsz, nsteps,
                    np.array([self.a, self.b]),
                    negative_log_prob=False)
         self.a, self.b = float(a), float(b)
+        print "a: ", self.a, "\t b: ", self.b
+
+    def _resample_b(self, A, W):
+        """
+        Resample the distance dependence offset
+        :return:
+        """
+        from autograd import grad
+        from hips.inference.hmc import hmc
+
+        lp  = lambda b: self._hmc_log_probability(self.L, self.a, b, A, W)
+        dlp = grad(lp)
+
+        stepsz = 0.0001
+        nsteps = 10
+        b = hmc(lp, dlp, stepsz, nsteps,
+                   np.array(self.b),
+                   negative_log_prob=False)
+        self.b = float(b)
 
     def _resample_cov(self, A, W):
         # Resample covariance matrix

@@ -102,9 +102,21 @@ def expected_truncnorm(mu=0, sigma=1.0, lb=-np.Inf, ub=np.Inf):
 
 def compute_optimal_rotation(L, L_true):
         """
-        Find a rotation matrix R such that F_inf * R ~= F_true
+        Find a rotation matrix R such that F_inf.dot(R) ~= F_true
         :return:
         """
         from scipy.linalg import orthogonal_procrustes
         R = orthogonal_procrustes(L, L_true)[0]
-        return R
+
+        # Given R, find a scale such that Lp' = Lp*s is such that,
+        # s = argmin_s y = (Lp * s - L)^T (Lp*s - L)
+        #     d/ds y = 2 * (Lp * s - L)^T Lp = 0
+        #            =>     Lp^T Lp *s - L^T Lp = 0
+        #            =>     s = (L^T Lp) / (Lp^T Lp)
+        #
+        # Then roll s into R such that Lp' = Lp*s = L.dot(R)*s = L.dot(R')
+        # for R' = R*s
+        Lp = L.dot(R)
+        s = (L*Lp).sum() / (Lp*Lp).sum()
+
+        return R*s
