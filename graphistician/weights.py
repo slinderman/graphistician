@@ -636,18 +636,33 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         return lp
 
     def sample_predictive_parameters(self):
-        raise NotImplementedError
-        # Lext = \
-        #     np.vstack((self.L, np.sqrt(self.sigma) * np.random.randn(1, self.dim)))
-        #
-        # D = -((Lext[:,None,:] - Lext[None,:,:])**2).sum(2)
-        # D += self.b
-        # D += self.mu_self * np.eye(self.N+1)
-        #
-        # P = logistic(D)
-        # Prow = P[-1,:]
-        # Pcol = P[:,-1]
-        # return Prow, Pcol
+        Lext = \
+            np.vstack((self.L, np.random.randn(1, self.dim)))
+
+        # Compute mean and covariance over extended space
+        D = ((Lext[:,None,:] - Lext[None,:,:])**2).sum(2)
+        Mu = self.a * D + self.b
+        Mu_row = np.tile(Mu[-1,:][:,None], (1,self.B))
+        Mu_row[-1] = self._self_gaussian.mu
+        Mu_col = Mu_row.copy()
+
+        # Mu = np.tile(Mu[:,:,None], (1,1,self.B))
+        # for n in xrange(self.N+1):
+        #     Mu[n,n,:] = self._self_gaussian.mu
+
+        L = np.linalg.cholesky(self.cov.sigma)
+        L_row = np.tile(L[None,:,:], (self.N+1, 1, 1))
+        L_row[-1] = np.linalg.cholesky(self._self_gaussian.sigma)
+        L_col = L_row.copy()
+
+        # L = np.tile(L[None,None,:,:], (self.N+1, self.N+1, 1, 1))
+        # for n in xrange(self.N+1):
+        #     L[n,n,:,:] = np.linalg.cholesky(self._self_gaussian.sigma)
+
+        # Mu_row, Mu_col = Mu[-1,:,:], Mu[:,-1,:]
+        # L_row, L_col = L[-1,:,:,:], L[:,-1,:,:]
+        return Mu_row, Mu_col, L_row, L_col
+
 
     def resample(self, (A,W)):
         self._resample_L(A, W)
