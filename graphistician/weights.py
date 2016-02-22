@@ -504,9 +504,9 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
     """
 
     def __init__(self, N, B=1, dim=2,
-                 a=-0.05, b=0.5,
+                 b=0.5,
                  sigma=None, Sigma_0=None, nu_0=None,
-                 mu_self=0.0):
+                 mu_self=0.0, eta=0.01):
         """
         Initialize SBM with parameters defined above.
         """
@@ -514,9 +514,9 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         self.B = B
         self.dim = dim
 
-        self.a = a
         self.b = b
-        self.L = np.random.randn(N,dim)
+        self.eta = eta
+        self.L = np.sqrt(eta) * np.random.randn(N,dim)
 
         if Sigma_0 is None:
             Sigma_0 = np.eye(B)
@@ -539,7 +539,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
 
     @property
     def Mu(self):
-        Mu = self.a * self.D + self.b
+        Mu = -self.D + self.b
         Mu = np.tile(Mu[:,:,None], (1,1,self.B))
         for n in xrange(self.N):
             Mu[n,n,:] = self._self_gaussian.mu
@@ -557,8 +557,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         return Sig
 
     def initialize_from_prior(self):
-        # TODO: Initialize a and b?
-        self.L = np.random.randn(self.N, self.dim)
+        self.L = np.sqrt(self.eta) * np.random.randn(self.N, self.dim)
         self.cov.resample()
 
     def initialize_hypers(self, W):
@@ -575,8 +574,8 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         lp = 0
 
         # Log prior of F under spherical Gaussian prior
-        from scipy.stats import norm
-        lp += norm.logpdf(self.a, 0, 1)
+        from scipy.stats import norm, invgamma
+        lp += invgamma.logpdf(self.eta, 1, 1)
         lp += norm.logpdf(self.b, 0, 1)
         lp += norm.logpdf(self.L, 0, 1).sum()
 
@@ -586,7 +585,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         # Log prior of mu_0 and mu_self
         return lp
 
-    def _hmc_log_probability(self, L, a, b, A, W):
+    def _hmc_log_probability(self, L, b, A, W):
         """
         Compute the log probability as a function of L.
         This allows us to take the gradients wrt L using autograd.
@@ -601,7 +600,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         L1 = anp.reshape(L,(self.N,1,self.dim))
         L2 = anp.reshape(L,(1,self.N,self.dim))
         # Mu = a * anp.sqrt(anp.sum((L1-L2)**2, axis=2)) + b
-        Mu = a * anp.sum((L1-L2)**2, axis=2) + b
+        Mu = -anp.sum((L1-L2)**2, axis=2) + b
 
         Aoff = A * (1-anp.eye(self.N))
         X = (W - Mu[:,:,None]) * Aoff[:,:,None]
@@ -610,38 +609,23 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         Sig = self.cov.sigma[0,0]
         Lmb = 1./Sig
 
-        # import ipdb; ipdb.set_trace()
         lp = anp.sum(-0.5 * X**2 * Lmb)
 
-        # lp = 0
-        # for m in xrange(self.N):
-        #     for n in xrange(self.N):
-        #         lp += -0.5 * anp.dot(X[m,n], anp.dot(Lmb, X[m,n]))
-                # lp += mvn.logpdf(W[m,n],
-                #                  Mu[m,n] * anp.ones(self.B),
-                #                  Sig)
-                # else:
-                #     lp += mvn.logpdf(W[m,n],
-                #                      Mu[m,n] * anp.ones(self.B),
-                #                      Sig_self)
-
-
         # Log prior of L under spherical Gaussian prior
-        lp += -0.5 * anp.sum(L * L)
+        lp += -0.5 * anp.sum(L * L / self.eta)
 
         # Log prior of mu0 under standardGaussian prior
-        lp += -0.5 * a ** 2
         lp += -0.5 * b ** 2
 
         return lp
 
     def sample_predictive_parameters(self):
         Lext = \
-            np.vstack((self.L, np.random.randn(1, self.dim)))
+            np.vstack((self.L, np.sqrt(self.eta) * np.random.randn(1, self.dim)))
 
         # Compute mean and covariance over extended space
         D = ((Lext[:,None,:] - Lext[None,:,:])**2).sum(2)
-        Mu = self.a * D + self.b
+        Mu = -D + self.b
         Mu_row = np.tile(Mu[-1,:][:,None], (1,self.B))
         Mu_row[-1] = self._self_gaussian.mu
         Mu_col = Mu_row.copy()
@@ -666,10 +650,10 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
 
     def resample(self, (A,W)):
         self._resample_L(A, W)
-        self._resample_a_and_b(A, W)
-        # self._resample_b(A, W)
+        self._resample_b(A, W)
         self._resample_cov(A, W)
         self._resample_self_gaussian(A, W)
+        self._resample_eta()
 
     def _resample_L(self, A, W):
         """
@@ -679,7 +663,7 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         from autograd import grad
         from hips.inference.hmc import hmc
 
-        lp  = lambda L: self._hmc_log_probability(L, self.a, self.b, A, W)
+        lp  = lambda L: self._hmc_log_probability(L, self.b, A, W)
         dlp = grad(lp)
 
         stepsz = 0.005
@@ -700,42 +684,44 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         from autograd import grad
         from scipy.optimize import minimize
 
-        lp  = lambda Lflat: -self._hmc_log_probability(anp.reshape(Lflat, (self.N,2)),
-                                                       self.a, self.b, A, W)
+        lp  = lambda Lflat: \
+            -self._hmc_log_probability(anp.reshape(Lflat, (self.N,2)),
+                                       self.b, A, W)
         dlp = grad(lp)
 
         res = minimize(lp, np.ravel(self.L), jac=dlp, method="bfgs")
 
         self.L = np.reshape(res.x, (self.N,2))
 
-    def _resample_a_and_b(self, A, W):
-        """
-        Resample the distance dependence parameters
-        :return:
-        """
-        from autograd import grad
-        from hips.inference.hmc import hmc
+    # def _resample_a_and_b(self, A, W):
+    #     """
+    #     Resample the distance dependence parameters
+    #     :return:
+    #     """
+    #     from autograd import grad
+    #     from hips.inference.hmc import hmc
+    #
+    #     lp  = lambda (a,b): self._hmc_log_probability(self.L, a, b, A, W)
+    #     dlp = grad(lp)
+    #
+    #     stepsz = 0.0001
+    #     nsteps = 10
+    #     a,b = hmc(lp, dlp, stepsz, nsteps,
+    #                np.array([self.a, self.b]),
+    #                negative_log_prob=False)
+    #     self.a, self.b = float(a), float(b)
+    #     print "a: ", self.a, "\t b: ", self.b
 
-        lp  = lambda (a,b): self._hmc_log_probability(self.L, a, b, A, W)
-        dlp = grad(lp)
-
-        stepsz = 0.0001
-        nsteps = 10
-        a,b = hmc(lp, dlp, stepsz, nsteps,
-                   np.array([self.a, self.b]),
-                   negative_log_prob=False)
-        self.a, self.b = float(a), float(b)
-        print "a: ", self.a, "\t b: ", self.b
-
-    def _resample_b(self, A, W):
+    def _resample_b_hmc(self, A, W):
         """
         Resample the distance dependence offset
         :return:
         """
+        # TODO: We could sample from the exact Gaussian conditional
         from autograd import grad
         from hips.inference.hmc import hmc
 
-        lp  = lambda b: self._hmc_log_probability(self.L, self.a, b, A, W)
+        lp  = lambda b: self._hmc_log_probability(self.L, b, A, W)
         dlp = grad(lp)
 
         stepsz = 0.0001
@@ -744,6 +730,34 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
                    np.array(self.b),
                    negative_log_prob=False)
         self.b = float(b)
+        print "b: ", self.b
+
+    def _resample_b(self, A, W):
+        """
+        Resample the distance dependence offset
+        W ~ N(mu, sigma)
+          = N(-D + b, sigma)
+
+        implies
+        W + D ~ N(b, sigma).
+
+        If b ~ N(0, 1), we can compute the Gaussian conditional
+        in closed form.
+        """
+        D = self.D
+        sigma = self.cov.sigma[0,0]
+        Aoff = (A * (1-np.eye(self.N))).astype(np.bool)
+        X = (W + D[:,:,None])[Aoff]
+
+        # Now X ~ N(b, sigma)
+        mu0, sigma0 = 0.0, 1.0
+        N = X.size
+        sigma_post = 1./(1./sigma0 + N/sigma)
+        mu_post = sigma_post * (mu0 / sigma0 + X.sum()/sigma)
+
+        self.b = mu_post + np.sqrt(sigma_post) * np.random.randn()
+        # print "b: ", self.b
+
 
     def _resample_cov(self, A, W):
         # Resample covariance matrix
@@ -755,6 +769,23 @@ class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, Gibbs
         # Resample self connection
         mask = np.eye(self.N, dtype=np.bool) & A.astype(np.bool)
         self._self_gaussian.resample(W[mask])
+
+    def _resample_eta(self):
+        """
+        Resample sigma under an inverse gamma prior, sigma ~ IG(1,1)
+        :return:
+        """
+        L = self.L
+
+        a_prior = 1.0
+        b_prior = 1.0
+
+        a_post = a_prior + L.size / 2.0
+        b_post = b_prior + (L**2).sum() / 2.0
+
+        from scipy.stats import invgamma
+        self.eta = invgamma.rvs(a=a_post, scale=b_post)
+        # print "eta: ", self.eta
 
     def plot(self, A, W, ax=None, L_true=None):
         """
