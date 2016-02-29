@@ -117,6 +117,6 @@ def compute_optimal_rotation(L, L_true):
         # Then roll s into R such that Lp' = Lp*s = L.dot(R)*s = L.dot(R')
         # for R' = R*s
         Lp = L.dot(R)
-        s = (L*Lp).sum() / (Lp*Lp).sum()
+        s = (L_true*Lp).sum() / (Lp*Lp).sum()
 
         return R*s

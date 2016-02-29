@@ -354,6 +354,7 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         # Resample the offsets
         self._resample_mu_0(A)
         self._resample_mu_self(A)
+        self._resample_sigma()
 
     def _resample_L(self, A):
         """
@@ -403,6 +404,22 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         nsteps = 10
         mu_self = hmc(lp, dlp, stepsz, nsteps, np.array(self.mu_self), negative_log_prob=False)
         self.mu_self = float(mu_self)
+
+    def _resample_sigma(self):
+        """
+        Resample sigma under an inverse gamma prior, sigma ~ IG(1,1)
+        :return:
+        """
+        L = self.L
+
+        a_prior = 1.0
+        b_prior = 1.0
+
+        a_post = a_prior + L.size / 2.0
+        b_post = b_prior + (L**2).sum() / 2.0
+
+        from scipy.stats import invgamma
+        self.sigma = invgamma.rvs(a=a_post, scale=b_post)
 
 
 class SBMAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
