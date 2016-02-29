@@ -362,7 +362,7 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         for c1 in xrange(self.C):
             for c2 in xrange(self.C):
                 blk = (self.c==c1)[:,None] * (self.c==c2)[None,:]
-                W[blk] = self._gaussians[c1][c2].rvs(size=blk.shape)
+                W[blk] = self._gaussians[c1][c2].rvs(size=blk.sum())
 
         if self.special_case_self_conns:
             for n in xrange(self.N):
