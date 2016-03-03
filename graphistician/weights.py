@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from pybasicbayes.distributions import Gaussian, GaussianFixedMean
+from pybasicbayes.distributions import Gaussian, GaussianFixedMean, GaussianFixedCov
 from pybasicbayes.abstractions import GibbsSampling
 
 from abstractions import GaussianWeightDistribution
@@ -303,6 +303,8 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         km.fit(features)
         self.c = km.labels_.astype(np.int)
 
+        print "Initial c: ", self.c
+
     def _get_mask(self, A, c1, c2):
             mask = ((self.c==c1)[:,None] * (self.c==c2)[None,:])
             mask &= A.astype(np.bool)
@@ -495,6 +497,117 @@ class SBMGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):
         pi = self.pi + np.bincount(self.c, minlength=self.C)
         self.m = np.random.dirichlet(pi)
 
+
+class SBMGaussianWeightSharedCov(SBMGaussianWeightDistribution):
+    def __init__(self, N, B=1,
+                 C=3, pi=10.0,
+                 mu_0=None, Sigma_0=None, nu_0=None,
+                 special_case_self_conns=True):
+
+        super(SBMGaussianWeightSharedCov, self).\
+            __init__(N, B=B, C=C, pi=pi,
+                     mu_0=mu_0, Sigma_0=Sigma_0, nu_0=nu_0,
+                     special_case_self_conns=special_case_self_conns)
+
+        if mu_0 is None:
+            mu_0 = np.zeros(B)
+
+        if Sigma_0 is None:
+            Sigma_0 = np.eye(B)
+
+        if nu_0 is None:
+            nu_0 = B + 2
+
+        self._cov_model = GaussianFixedMean(mu=np.zeros(B),
+                                            nu_0=nu_0, lmbda_0=Sigma_0)
+
+        self._gaussians = [[GaussianFixedCov(mu_0=mu_0, sigma_0=np.eye(B),
+                                             sigma=self._cov_model.sigma)
+                            for _ in xrange(C)]
+                           for _ in xrange(C)]
+
+    def resample_mu_and_Sig(self, A, W):
+        """
+        Resample p given observations of the weights
+        """
+        Abool = A.astype(np.bool)
+
+        for c1 in xrange(self.C):
+            for c2 in xrange(self.C):
+                mask = self._get_mask(Abool, c1, c2)
+                self._gaussians[c1][c2].resample(W[mask])
+
+        # Resample self connection
+        if self.special_case_self_conns:
+            mask = np.eye(self.N, dtype=np.bool) & Abool
+            self._self_gaussian.resample(W[mask])
+
+        # Resample covariance
+        A_offdiag = Abool.copy()
+        np.fill_diagonal(A_offdiag, False)
+        W_cent = (W - self.Mu)[A_offdiag]
+        self._cov_model.resample(W_cent)
+
+        # Update gaussians
+        for c1 in xrange(self.C):
+            for c2 in xrange(self.C):
+                self._gaussians[c1][c2].sigma = self._cov_model.sigma
+
+    def log_prior(self):
+        """
+        Compute the log likelihood of a set of SBM parameters
+
+        :param x:    (m,p,v) tuple
+        :return:
+        """
+        from scipy.stats import dirichlet
+        lp = 0
+
+        # Get the log probability of the block probabilities
+        lp += dirichlet(self.pi).logpdf(self.m)
+
+        # Get the prior probability of the Gaussian parameters under NIW prior
+        # for c1 in xrange(self.C):
+        #     for c2 in xrange(self.C):
+        #         lp += normal_inverse_wishart_log_prob(self._gaussians[c1][c2])
+        #
+        # if self.special_case_self_conns:
+        #     lp += normal_inverse_wishart_log_prob(self._self_gaussian)
+
+        # Get the probability of the block assignments
+        lp += (np.log(self.m)[self.c]).sum()
+        return lp
+
+
+    def initialize_hypers(self, W):
+        mu_0 = W.mean(axis=(0,1))
+        sigma_0 = np.diag(W.var(axis=(0,1)))
+
+        # Set the global cov
+        nu_0 = self._cov_model.nu_0
+        self._cov_model.sigma_0 = sigma_0 * (nu_0 - self.B - 1)
+
+        # Set the mean
+        for c1 in xrange(self.C):
+            for c2 in xrange(self.C):
+                self._gaussians[c1][c2].mu_0 = mu_0
+                self._gaussians[c1][c2].sigma = self._cov_model.sigma_0
+                self._gaussians[c1][c2].resample()
+
+        if self.special_case_self_conns:
+            W_self = W[np.arange(self.N), np.arange(self.N)]
+            self._self_gaussian.mu_0 = W_self.mean(axis=0)
+            self._self_gaussian.sigma_0 = np.diag(W_self.var(axis=0))
+            self._self_gaussian.resample()
+
+        # Cluster the neurons based on their rows and columns
+        from sklearn.cluster import KMeans
+        features = np.hstack((W[:,:,0], W[:,:,0].T))
+        km = KMeans(n_clusters=self.C)
+        km.fit(features)
+        self.c = km.labels_.astype(np.int)
+
+        print "Initial c: ", self.c
 
 
 class LatentDistanceGaussianWeightDistribution(GaussianWeightDistribution, GibbsSampling):

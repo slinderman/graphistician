@@ -186,7 +186,7 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     l_n ~ N(0, sigma^2 I)
     A_{n', n} ~ Bern(\sigma(-||l_{n'} - l_{n}||_2^2))
     """
-    def __init__(self, N, dim=2, sigma=1.0, mu0=0.0, mu_self=0.0):
+    def __init__(self, N, dim=2, sigma=2.0, mu0=0.0, mu_self=0.0):
         self.N = N
         self.dim = dim
         self.sigma = sigma
@@ -354,7 +354,7 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         # Resample the offsets
         self._resample_mu_0(A)
         self._resample_mu_self(A)
-        self._resample_sigma()
+        # self._resample_sigma()
 
     def _resample_L(self, A):
         """
@@ -367,9 +367,11 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         lp  = lambda L: self._hmc_log_probability(L, self.mu_0, self.mu_self, A)
         dlp = grad(lp)
 
-        stepsz = 0.005
+        stepsz = 0.01
         nsteps = 10
         self.L = hmc(lp, dlp, stepsz, nsteps, self.L.copy(), negative_log_prob=False)
+
+        print "Var L: ", np.var(self.L)
 
     def _resample_mu_0(self, A):
         """
