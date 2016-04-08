@@ -66,14 +66,21 @@ class BernoulliAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
     """
     Bernoulli edge model with fixed probability
     """
-    def __init__(self, N, p, p_self=None):
+    def __init__(self, N, p=None, P=None, p_self=None):
         super(BernoulliAdjacencyDistribution, self).__init__(N)
 
-        assert p > 0 and p < 1
-        self.p = p
-        self.p_self = p_self if p_self else p
-        self._P = p * np.ones((N,N))
-        np.fill_diagonal(self._P, self.p_self)
+        if P is not None:
+            assert P.shape == (N, N)
+            assert np.all(P>=0) and np.all(P<=1)
+            self._P = P.copy()
+
+        else:
+            assert p is not None
+            assert p > 0 and p < 1
+            self.p = p
+            self.p_self = p_self if p_self else p
+            self._P = p * np.ones((N,N))
+            np.fill_diagonal(self._P, self.p_self)
 
 
     @property
@@ -193,6 +200,10 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         self.mu_0 = mu0
         self.mu_self = mu_self
         self.L = np.sqrt(self.sigma) * np.random.randn(N,dim)
+
+        # Set HMC params
+        self._L_step_sz = 0.01
+        self._L_accept_rate = 0.9
 
     @property
     def D(self):
@@ -367,11 +378,13 @@ class LatentDistanceAdjacencyDistribution(AdjacencyDistribution, GibbsSampling):
         lp  = lambda L: self._hmc_log_probability(L, self.mu_0, self.mu_self, A)
         dlp = grad(lp)
 
-        stepsz = 0.01
         nsteps = 10
-        self.L = hmc(lp, dlp, stepsz, nsteps, self.L.copy(), negative_log_prob=False)
+        self.L, self._L_step_sz, self._L_accept_rate = \
+            hmc(lp, dlp, self._L_step_sz, nsteps, self.L.copy(),
+                negative_log_prob=False, avg_accept_rate=self._L_accept_rate,
+                adaptive_step_sz=True)
 
-        print "Var L: ", np.var(self.L)
+        # print "Var L: ", np.var(self.L)
 
     def _resample_mu_0(self, A):
         """
