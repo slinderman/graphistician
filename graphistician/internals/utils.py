@@ -100,7 +100,7 @@ def expected_truncnorm(mu=0, sigma=1.0, lb=-np.Inf, ub=np.Inf):
     E = mu + (normal_pdf(alpha) - normal_pdf(beta)) / Z * sigma
     return E
 
-def compute_optimal_rotation(L, L_true):
+def compute_optimal_rotation(L, L_true, scale=True):
         """
         Find a rotation matrix R such that F_inf.dot(R) ~= F_true
         :return:
@@ -116,7 +116,10 @@ def compute_optimal_rotation(L, L_true):
         #
         # Then roll s into R such that Lp' = Lp*s = L.dot(R)*s = L.dot(R')
         # for R' = R*s
-        Lp = L.dot(R)
-        s = (L_true*Lp).sum() / (Lp*Lp).sum()
 
-        return R*s
+        if scale:
+            Lp = L.dot(R)
+            s = (L_true*Lp).sum() / (Lp*Lp).sum()
+            return R*s
+        else:
+            return R
